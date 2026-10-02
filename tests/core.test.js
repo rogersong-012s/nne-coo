@@ -6,7 +6,7 @@ import { cellVisibility, getEffectiveMemorySteps, getEffectiveVisionCells, getMe
 import { currentRound, nextColor, resolveColor } from '../js/objectives.js';
 import { collectItem } from '../js/items.js';
 import { takeTurn } from '../js/turn.js';
-import { bindInput, directionForKey } from '../js/input.js';
+import { bindInput, directionForKey, directionForSwipe, directionForTap, SWIPE_THRESHOLD, TAP_DEAD_ZONE } from '../js/input.js';
 import { createRunState } from '../js/run-state.js';
 
 function makeObjectiveState({ colors = ['red', 'orange', 'yellow'], rounds = 2 } = {}) {
@@ -597,6 +597,70 @@ test('PC direction keys map to one-step movement directions', () => {
     assert.equal(directionForKey(key), direction);
   }
   assert.equal(directionForKey('Enter'), null);
+});
+
+test('mobile swipe and relative tap resolve to one cardinal direction with thresholds', () => {
+  assert.equal(SWIPE_THRESHOLD, 30);
+  assert.equal(TAP_DEAD_ZONE, 24);
+  for (const [dx, dy, expected] of [[80, 4, 'right'], [-80, 4, 'left'], [4, -80, 'up'], [4, 80, 'down']]) {
+    assert.equal(directionForSwipe(dx, dy), expected, 'long swipes still resolve to one cell direction');
+  }
+  assert.equal(directionForSwipe(18, 0), null, 'sub-threshold movement is not treated as a swipe');
+  for (const [x, y, expected] of [[100, 50, 'up'], [100, 150, 'down'], [50, 100, 'left'], [150, 100, 'right']]) {
+    assert.equal(directionForTap(x, y, 100, 100), expected);
+  }
+  assert.equal(directionForTap(115, 112, 100, 100), null, 'taps inside the player dead zone do not move');
+  assert.equal(directionForTap(130, 130, 100, 100), 'down', 'diagonal ties prioritize vertical direction');
+});
+
+test('mobile maze pointer gesture dispatches only once and all inputs share the move callback', () => {
+  const previous = { window: globalThis.window, document: globalThis.document, HTMLElement: globalThis.HTMLElement };
+  const listeners = new Map(), boardListeners = new Map(), moves = [];
+  const playerCell = { getBoundingClientRect: () => ({ left: 90, top: 90, width: 20, height: 20 }) };
+  const board = {
+    addEventListener: (type, listener) => boardListeners.set(type, listener),
+    querySelector: selector => selector === '.cell.player' ? playerCell : null,
+    setPointerCapture() {},
+  };
+  const buttons = ['up', 'left', 'down', 'right'].map(dir => ({
+    dataset: { dir }, addEventListener: (type, listener) => listeners.set(`button:${dir}`, listener),
+  }));
+  globalThis.HTMLElement = class { matches() { return false; } };
+  globalThis.window = {
+    addEventListener: (type, listener) => listeners.set(`window:${type}`, listener),
+    matchMedia: () => ({ matches: true }),
+  };
+  globalThis.document = {
+    querySelectorAll: () => buttons,
+    getElementById: id => id === 'board' ? board : null,
+  };
+  try {
+    bindInput(direction => moves.push(direction), () => {});
+    const dispatchGesture = (startX, startY, endX, endY) => {
+      const event = (x, y) => ({ pointerId: 1, pointerType: 'touch', isPrimary: true, button: 0, clientX: x, clientY: y, preventDefault() {} });
+      boardListeners.get('pointerdown')(event(startX, startY));
+      boardListeners.get('pointerup')(event(endX, endY));
+      boardListeners.get('pointerup')(event(endX, endY)); // Duplicate end / synthesized follow-up cannot move again.
+    };
+    dispatchGesture(50, 100, 130, 104);
+    assert.deepEqual(moves, ['right']);
+    dispatchGesture(100, 150, 100, 50);
+    assert.deepEqual(moves, ['right', 'up']);
+    dispatchGesture(100, 100, 111, 108);
+    assert.deepEqual(moves, ['right', 'up'], 'a tap in the player dead zone does nothing');
+    dispatchGesture(100, 60, 100, 60);
+    dispatchGesture(100, 140, 100, 140);
+    dispatchGesture(60, 100, 60, 100);
+    dispatchGesture(140, 100, 140, 100);
+    assert.deepEqual(moves, ['right', 'up', 'up', 'down', 'left', 'right'], 'relative taps dispatch each of the four directions once');
+    listeners.get('button:left')({ preventDefault() {} });
+    assert.deepEqual(moves, ['right', 'up', 'up', 'down', 'left', 'right', 'left'], 'direction buttons use the same movement callback');
+  } finally {
+    for (const key of Object.keys(previous)) {
+      if (previous[key] === undefined) delete globalThis[key];
+      else globalThis[key] = previous[key];
+    }
+  }
 });
 
 test('mobile direction buttons move on pointer input', () => {

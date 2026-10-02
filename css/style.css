@@ -117,6 +117,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid #89c6ff; outline
 
 .bottom { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 26px; flex: none; }
 .legend { margin: 0; color: #8798b7; font-size: 10px; line-height: 1.2; }
+.mobile-gesture-hint { display: none; }
 .controls { display: none; }
 .controls button:disabled { opacity: .38; cursor: wait; }
 .help { display: flex; align-items: center; gap: 8px; color: #8294b4; font-size: 10px; white-space: nowrap; }
@@ -192,4 +193,82 @@ button:focus-visible, select:focus-visible { outline: 2px solid #89c6ff; outline
   .order-chip { flex-basis: 9px; width: 9px; height: 9px; }
   .bottom { min-height: 31px; }
   .controls { grid-template-rows: repeat(2, 19px); }
+}
+
+/* Mobile portrait layout: larger targets while reserving most height for the maze. */
+@media (max-width: 700px) {
+  .app { gap: 3px; padding: 5px 6px max(5px, env(safe-area-inset-bottom)); }
+  .topbar { display: grid; grid-template-columns: 1fr; gap: 3px; min-height: 0; }
+  .brand { justify-content: center; gap: 6px; }
+  .brand strong { font-size: clamp(17px, 4.8vw, 20px); }
+  .brand span { font-size: clamp(9px, 2.6vw, 11px); }
+  .dashboard { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+  .stat { flex-direction: column; align-items: center; justify-content: center; gap: 0; min-height: 40px; padding: 3px 4px; line-height: 1.05; }
+  .stat span { font-size: 10px; }
+  .stat strong { font-size: 14px; }
+  .menu { grid-column: 1 / -1; gap: 5px; }
+  .menu select { flex: 1; min-width: 0; max-width: none; min-height: 36px; padding: 5px 7px; font-size: 11px; }
+  .menu button { min-height: 36px; padding: 5px 9px; font-size: 11px; }
+  .order-panel { padding: 4px 7px; }
+  .order-label { font-size: 11px; }
+  .order { justify-content: center; gap: 1px; }
+  .sequence-arrow { font-size: 9px; }
+  .order-chip { flex-basis: 12px; width: 12px; height: 12px; }
+  .order-chip.done::after { font-size: 9px; }
+  .cheat-idle { font-size: 0; }
+  .cheat-idle::after { content: '解答'; font-size: 10px; }
+  .bottom { min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; grid-template-rows: auto auto; align-items: center; gap: 4px 5px; }
+  .legend { grid-column: 1 / -1; grid-row: 1; display: flex; justify-content: center; flex-wrap: wrap; column-gap: 8px; row-gap: 3px; font-size: 9px; text-align: center; }
+  .legend-items { white-space: nowrap; }
+  .mobile-gesture-hint { display: inline; color: #a9bad6; font-size: 10px; }
+  .board { touch-action: none; overscroll-behavior: contain; user-select: none; -webkit-user-select: none; }
+  .controls { grid-column: 1; grid-row: 2; justify-self: center; display: grid; grid-template-columns: repeat(3, clamp(48px, 14vw, 56px)); grid-template-rows: repeat(2, clamp(48px, 14vw, 56px)); gap: 4px; }
+  .controls button { min-width: 48px; min-height: 48px; padding: 0; font-size: 22px; font-weight: 700; touch-action: manipulation; user-select: none; -webkit-tap-highlight-color: transparent; transition: transform 80ms ease, background-color 80ms ease; }
+  .controls button:active { transform: scale(.94); background: #35517b; }
+  .controls [data-dir=up] { grid-column: 2; grid-row: 1; }
+  .controls [data-dir=left] { grid-column: 1; grid-row: 2; }
+  .controls [data-dir=down] { grid-column: 2; grid-row: 2; }
+  .controls [data-dir=right] { grid-column: 3; grid-row: 2; }
+  .help { grid-column: 2; grid-row: 2; justify-content: center; gap: 0; font-size: 10px; }
+  .help span { display: none; }
+  .help button { min-width: 54px; min-height: 48px; padding: 5px 7px; font-size: 10px; }
+  .cheat-button { grid-column: 3; grid-row: 2; justify-self: stretch; min-width: 58px; min-height: 48px; padding: 5px 7px; font-size: 10px; }
+  .debug-panel { width: min(76vw, 410px); max-height: 62%; font-size: 9px; }
+}
+
+@media (max-width: 360px) {
+  .app { padding-right: 5px; padding-left: 5px; }
+  .dashboard { gap: 3px; }
+  .stat { min-width: 0; gap: 3px; padding: 3px; }
+  .stat span { letter-spacing: 0; }
+  .level-name strong { min-width: 30px; }
+  .order-label { font-size: 10px; }
+  .order-chip { flex-basis: 11px; width: 11px; height: 11px; }
+  .sequence-arrow { font-size: 8px; }
+  .controls { gap: 3px; }
+  .help button { min-width: 50px; padding-right: 5px; padding-left: 5px; }
+  .cheat-button { min-width: 54px; padding-right: 4px; padding-left: 4px; }
+}
+
+/* Short mobile landscape viewports keep touch targets usable and compact the header. */
+@media (max-width: 700px) and (max-height: 600px) and (orientation: landscape) {
+  .app { gap: 2px; padding: 3px 6px max(3px, env(safe-area-inset-bottom)); }
+  .topbar { display: flex; align-items: center; gap: 6px; }
+  .brand span, .legend, .help span { display: none; }
+  .dashboard { display: flex; flex: 1; justify-content: flex-end; gap: 2px; }
+  .stat { flex-direction: row; align-items: baseline; min-height: 30px; gap: 3px; padding: 2px 4px; }
+  .stat span { font-size: 8px; }
+  .stat strong { font-size: 12px; }
+  .menu { grid-column: auto; gap: 3px; }
+  .menu select { max-width: clamp(72px, 16vw, 108px); min-height: 32px; padding: 3px 4px; font-size: 9px; }
+  .menu button { min-height: 32px; padding: 3px 5px; font-size: 9px; }
+  .order-panel { padding: 1px 5px; }
+  .order-label { font-size: 9px; }
+  .order-chip { flex-basis: 10px; width: 10px; height: 10px; }
+  .bottom { display: flex; justify-content: space-between; gap: 6px; min-height: 100px; }
+  .controls { display: grid; grid-template-columns: repeat(3, 48px); grid-template-rows: repeat(2, 48px); gap: 4px; }
+  .controls button { min-width: 48px; min-height: 48px; font-size: 20px; }
+  .help { gap: 0; }
+  .help button, .cheat-button { min-height: 48px; padding: 4px 6px; font-size: 9px; }
+  .cheat-idle::after { font-size: 9px; }
 }
