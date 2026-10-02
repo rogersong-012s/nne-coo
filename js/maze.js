@@ -13,6 +13,7 @@ const makeRandom = seed => {
     return ((t ^ t >>> 14) >>> 0) / 4294967296;
   };
 };
+const GENERATION_ATTEMPT_LIMIT = 1000;
 const randomIndex = (random, length) => Math.floor(random() * length);
 const shuffle = (array, random) => {
   for (let i = array.length - 1; i > 0; i--) {
@@ -67,6 +68,16 @@ function pathToDirections(path) {
   });
 }
 
+function pathTurnCount(path) {
+  let turns = 0;
+  for (let index = 2; index < path.length; index++) {
+    const previousDirection = [path[index - 1].x - path[index - 2].x, path[index - 1].y - path[index - 2].y];
+    const currentDirection = [path[index].x - path[index - 1].x, path[index].y - path[index - 1].y];
+    if (previousDirection[0] !== currentDirection[0] || previousDirection[1] !== currentDirection[1]) turns++;
+  }
+  return turns;
+}
+
 const floorDegree = (tiles, width, height, p) => neighbors(p, width, height)
   .filter(q => tiles[q.y][q.x] === 'floor').length;
 
@@ -78,6 +89,69 @@ function sectorOf(position, width, height) {
 
 function routeJunctions(tiles, width, height, path) {
   return path.slice(1, -1).filter(p => floorDegree(tiles, width, height, p) >= 3).length;
+}
+
+const edgeKey = (a, b) => [key(a), key(b)].sort().join('|');
+
+export function analyzeChokePoints(maze) {
+  const discovery = new Map(), low = new Map(), subtreeSize = new Map();
+  const componentSizesAfterRemoval = new Map(), bridgeEdges = [];
+  const totalFloors = maze.tiles.flat().filter(tile => tile === 'floor').length;
+  // Treat only separators between substantial regions as major choke points.
+  // A small fixed floor avoids classifying most of a compact tutorial maze as
+  // a major choke merely because its total walkable area is small.
+  const majorComponentSize = Math.max(5, Math.ceil(totalFloors * 0.12));
+  let clock = 0;
+
+  function visit(point, parent = null) {
+    const pointKey = key(point);
+    discovery.set(pointKey, ++clock);
+    low.set(pointKey, discovery.get(pointKey));
+    let size = 1, childCount = 0, separatedChildSizes = [];
+
+    for (const adjacent of neighbors(point, maze.width, maze.height)) {
+      if (maze.tiles[adjacent.y][adjacent.x] !== 'floor') continue;
+      const adjacentKey = key(adjacent);
+      if (!discovery.has(adjacentKey)) {
+        childCount++;
+        size += visit(adjacent, pointKey);
+        low.set(pointKey, Math.min(low.get(pointKey), low.get(adjacentKey)));
+        if (low.get(adjacentKey) > discovery.get(pointKey)) bridgeEdges.push(edgeKey(point, adjacent));
+        if (parent === null || low.get(adjacentKey) >= discovery.get(pointKey)) separatedChildSizes.push(subtreeSize.get(adjacentKey));
+      } else if (adjacentKey !== parent) {
+        low.set(pointKey, Math.min(low.get(pointKey), discovery.get(adjacentKey)));
+      }
+    }
+
+    subtreeSize.set(pointKey, size);
+    if (separatedChildSizes.length > 0 && (parent !== null || childCount > 1)) {
+      const remainder = totalFloors - 1 - separatedChildSizes.reduce((sum, count) => sum + count, 0);
+      const parts = [...separatedChildSizes, ...(remainder > 0 ? [remainder] : [])];
+      componentSizesAfterRemoval.set(pointKey, parts);
+    }
+    return size;
+  }
+
+  const root = maze.spawn;
+  if (maze.tiles[root.y]?.[root.x] === 'floor') visit(root);
+  const articulationPoints = [...componentSizesAfterRemoval].map(([position, componentSizes]) => {
+    const [x, y] = position.split(',').map(Number);
+    const majorParts = componentSizes.filter(size => size >= majorComponentSize).length;
+    return {
+      x, y,
+      componentSizes,
+      major: majorParts >= 2,
+      separatedFloorCount: totalFloors - 1 - Math.max(...componentSizes),
+    };
+  });
+  const majorChokePoints = articulationPoints.filter(point => point.major);
+  return {
+    totalFloors,
+    articulationPoints,
+    majorChokePoints,
+    bridgeEdges: [...new Set(bridgeEdges)],
+    majorComponentSize,
+  };
 }
 
 export function getMazeQuality(maze, sequenceTargetIds = maze.sequenceTargetIds ?? []) {
@@ -107,7 +181,31 @@ export function getMazeQuality(maze, sequenceTargetIds = maze.sequenceTargetIds 
       junctions: path ? routeJunctions(maze.tiles, maze.width, maze.height, path) : 0,
     });
   }
-  return { junctionCount, deadEndCount, sectorById, colorPathDistances, sequencePathDistances, solutionLength: maze.solutionPath?.length ?? 0 };
+  const exitDistances = distances(maze.tiles, maze.width, maze.height, maze.exit);
+  const purpleExitDistances = Object.fromEntries(maze.colors
+    .filter(target => target.color === 'purple')
+    .map(target => [target.id, exitDistances.get(key(target)) ?? null]));
+  const finalPurple = maze.colors.find(target => target.id === sequenceTargetIds.at(-1));
+  const finishingPath = finalPurple ? route(maze.tiles, maze.width, maze.height, finalPurple, maze.exit) : null;
+  const finishingWalkTurns = finishingPath ? pathTurnCount(finishingPath) : 0;
+  const chokePoints = analyzeChokePoints(maze);
+  const articulationKeys = new Set(chokePoints.articulationPoints.map(key));
+  const majorChokeKeys = new Set(chokePoints.majorChokePoints.map(key));
+  const colorArticulationIds = maze.colors.filter(target => articulationKeys.has(key(target))).map(target => target.id);
+  const colorMajorChokeIds = maze.colors.filter(target => majorChokeKeys.has(key(target))).map(target => target.id);
+  return {
+    junctionCount, deadEndCount, sectorById, colorPathDistances, sequencePathDistances,
+    purpleExitDistances,
+    minPurpleExitDistance: Math.min(...Object.values(purpleExitDistances).filter(Number.isFinite)),
+    finalPurpleToExitDistance: finalPurple ? exitDistances.get(key(finalPurple)) ?? null : null,
+    finishingWalkTurns,
+    articulationPointCount: chokePoints.articulationPoints.length,
+    majorChokePointCount: chokePoints.majorChokePoints.length,
+    colorArticulationIds,
+    colorMajorChokeIds,
+    chokePoints,
+    solutionLength: maze.solutionPath?.length ?? 0,
+  };
 }
 
 export function validateSolutionPath(maze, solutionPath, colorSequence) {
@@ -174,7 +272,133 @@ export function hasOrderedRoute(maze, colorSequence) {
   return Boolean(solveMaze(maze, colorSequence));
 }
 
-function pickSpreadPosition(candidates, occupied, sectorCounts, level, random) {
+function findReachableChoice(maze, fromState, targetId, targetIndexAt) {
+  const targetIndex = maze.colors.findIndex(target => target.id === targetId);
+  if (targetIndex < 0) return null;
+  const queue = [fromState.position], seen = new Set([key(fromState.position)]);
+  for (let head = 0; head < queue.length; head++) {
+    const point = queue[head];
+    for (const adjacent of neighbors(point, maze.width, maze.height)) {
+      if (maze.tiles[adjacent.y][adjacent.x] !== 'floor') continue;
+      const adjacentKey = key(adjacent), colorIndex = targetIndexAt.get(adjacentKey);
+      if (colorIndex !== undefined && !(fromState.mask & (1 << colorIndex))) {
+        if (colorIndex !== targetIndex) continue;
+        return { position: adjacent, mask: fromState.mask | (1 << targetIndex) };
+      }
+      if (seen.has(adjacentKey)) continue;
+      seen.add(adjacentKey);
+      queue.push(adjacent);
+    }
+  }
+  return null;
+}
+
+function canFinishFixedPlan(maze, startPosition, completedMask, targetPlan, targetIndexAt) {
+  const queue = [{ position: startPosition, progress: 0, mask: completedMask }];
+  const visited = new Set([`${key(startPosition)}|0|${completedMask}`]);
+  for (let head = 0; head < queue.length; head++) {
+    const node = queue[head];
+    if (key(node.position) === key(maze.exit) && node.progress === targetPlan.length) return true;
+    for (const adjacent of neighbors(node.position, maze.width, maze.height)) {
+      if (maze.tiles[adjacent.y][adjacent.x] !== 'floor') continue;
+      let progress = node.progress, mask = node.mask;
+      const colorIndex = targetIndexAt.get(key(adjacent));
+      if (colorIndex !== undefined && !(mask & (1 << colorIndex))) {
+        if (maze.colors[colorIndex].id !== targetPlan[progress]) continue;
+        mask |= 1 << colorIndex;
+        progress++;
+      }
+      const stateKey = `${key(adjacent)}|${progress}|${mask}`;
+      if (visited.has(stateKey)) continue;
+      visited.add(stateKey);
+      queue.push({ position: adjacent, progress, mask });
+    }
+  }
+  return false;
+}
+
+/**
+ * Checks every reachable first-round physical-target choice, then searches the
+ * remaining game using the same locked-target rule as movePlayer.
+ */
+export function validateChoiceSafety(maze, colorSequence, baseColorOrder) {
+  const firstRoundLength = baseColorOrder.length;
+  const targetsByColor = new Map(baseColorOrder.map(color => [color, maze.colors.filter(target => target.color === color)]));
+  const targetIndexAt = new Map(maze.colors.map((target, index) => [key(target), index]));
+  const report = {
+    choiceSafe: false,
+    choicesPerRound: firstRoundLength,
+    choicePlansConsidered: 2 ** firstRoundLength,
+    testedChoiceBranches: 0,
+    choiceEdgesTested: 0,
+    reachableChoiceEdges: 0,
+    unreachableChoiceEdges: 0,
+    reachableChoiceBranches: 0,
+    safeChoiceBranches: 0,
+    deadlockBranches: 0,
+    deadlockChoiceBranches: [],
+  };
+
+  if (colorSequence.length !== firstRoundLength * 2
+    || colorSequence.slice(0, firstRoundLength).some((color, index) => color !== baseColorOrder[index])
+    || colorSequence.slice(firstRoundLength).some((color, index) => color !== baseColorOrder[index])
+    || baseColorOrder.some(color => targetsByColor.get(color)?.length !== 2)) {
+    report.deadlockBranches = 1;
+    report.deadlockChoiceBranches.push({ choices: [], reason: 'UNSUPPORTED_CHOICE_TREE_CONFIG' });
+    return report;
+  }
+
+  function recordDeadlock(choices, reason) {
+    report.deadlockBranches++;
+    report.deadlockChoiceBranches.push({ choices: [...choices], reason });
+  }
+
+  function visitChoicePrefix(colorIndex, state, choices) {
+    if (colorIndex === firstRoundLength) {
+      report.reachableChoiceBranches++;
+      report.testedChoiceBranches++;
+      const remainingPlan = colorSequence.slice(firstRoundLength).map(color => {
+        const targetIndex = maze.colors.findIndex((target, index) => target.color === color && !(state.mask & (1 << index)));
+        return targetIndex < 0 ? null : maze.colors[targetIndex].id;
+      });
+      if (remainingPlan.some(targetId => targetId === null)) {
+        recordDeadlock(choices, 'SECOND_ROUND_TARGET_MISSING');
+        return;
+      }
+      if (!canFinishFixedPlan(maze, state.position, state.mask, remainingPlan, targetIndexAt)) {
+        recordDeadlock(choices, 'NO_COMPLETION_AFTER_LEGAL_FIRST_ROUND_CHOICES');
+        return;
+      }
+      report.safeChoiceBranches++;
+      return;
+    }
+
+    const expectedColor = baseColorOrder[colorIndex];
+    const availableTargets = targetsByColor.get(expectedColor).filter(target => {
+      const targetIndex = maze.colors.indexOf(target);
+      return !(state.mask & (1 << targetIndex));
+    });
+    let reachableChildren = 0;
+    for (const target of availableTargets) {
+      report.choiceEdgesTested++;
+      const child = findReachableChoice(maze, state, target.id, targetIndexAt);
+      if (!child) {
+        report.unreachableChoiceEdges++;
+        continue;
+      }
+      reachableChildren++;
+      report.reachableChoiceEdges++;
+      visitChoicePrefix(colorIndex + 1, child, [...choices, target.id]);
+    }
+    if (reachableChildren === 0) recordDeadlock(choices, `NO_REACHABLE_${expectedColor.toUpperCase()}_CHOICE`);
+  }
+
+  visitChoicePrefix(0, { position: { ...maze.spawn }, mask: 0 }, []);
+  report.choiceSafe = report.deadlockBranches === 0 && report.safeChoiceBranches === report.reachableChoiceBranches;
+  return report;
+}
+
+function pickSpreadPosition(candidates, occupied, sectorCounts, level, random, diversityCounts = null) {
   const viable = candidates.filter(point => !occupied.has(key(point)));
   if (!viable.length) return null;
   const positions = [...occupied].map(value => {
@@ -183,22 +407,23 @@ function pickSpreadPosition(candidates, occupied, sectorCounts, level, random) {
   const scored = viable.map(point => {
     const sector = sectorOf(point, level.mazeWidth, level.mazeHeight);
     const minManhattan = positions.length ? Math.min(...positions.map(p => Math.abs(p.x - point.x) + Math.abs(p.y - point.y))) : 0;
-    return { point, score: (sectorCounts.get(sector) ?? 0) * 10 - Math.min(minManhattan, 8) + random() * 0.5 };
+    const diversityPenalty = (diversityCounts?.get(sector) ?? 0) * 100;
+    return { point, score: diversityPenalty + (sectorCounts.get(sector) ?? 0) * 10 - Math.min(minManhattan, 8) + random() * 0.5 };
   }).sort((a, b) => a.score - b.score);
   return scored[randomIndex(random, Math.min(4, scored.length))].point;
 }
 
-function buildMission(level, tiles, floor, spawn, exit, random, colorSequence, colorCopies) {
+function buildMission(level, tiles, floor, spawn, random, colorSequence, colorCopies, majorChokeKeys) {
   const { baseColorOrder } = getColorConfig(level);
   const extraRounds = Math.max(0, Math.ceil((colorSequence.length - 12) / 6));
   const minTargetDistance = Math.max(2, level.minTargetPathDistance - extraRounds);
   const minSameColorDistance = Math.max(minTargetDistance + 1, level.minSameColorPathDistance - extraRounds * 2);
-  const sectorCounts = new Map(), occupied = new Set([key(spawn), key(exit)]);
+  const sectorCounts = new Map(), occupied = new Set([key(spawn)]);
   const addSector = p => {
     const sector = sectorOf(p, level.mazeWidth, level.mazeHeight);
     sectorCounts.set(sector, (sectorCounts.get(sector) ?? 0) + 1);
   };
-  addSector(spawn); addSector(exit);
+  addSector(spawn);
 
   const colors = [], sequenceTargets = [], walk = [{ ...spawn }], walked = new Set([key(spawn)]);
   const copiesUsed = Object.fromEntries(baseColorOrder.map(color => [color, 0]));
@@ -210,7 +435,7 @@ function buildMission(level, tiles, floor, spawn, exit, random, colorSequence, c
     const candidates = [];
     for (const point of floor) {
       const pointKey = key(point), distance = fromCurrent.distances.get(pointKey);
-      if (!distance || occupied.has(pointKey) || walked.has(pointKey) || distance < minTargetDistance) continue;
+      if (!distance || occupied.has(pointKey) || walked.has(pointKey) || distance < minTargetDistance || majorChokeKeys.has(pointKey)) continue;
       let spaced = true;
       for (let previousIndex = 0; previousIndex < colors.length; previousIndex++) {
         const prior = colors[previousIndex], priorDistance = priorDistances[previousIndex].get(pointKey) ?? Infinity;
@@ -241,17 +466,13 @@ function buildMission(level, tiles, floor, spawn, exit, random, colorSequence, c
     current = chosen.point;
   }
 
-  const exitPath = route(tiles, level.mazeWidth, level.mazeHeight, current, exit);
-  if (!exitPath) throw new Error('彩序完成後無法抵達出口。');
-  for (const point of exitPath.slice(1)) walk.push({ ...point });
-
   const extraColors = [];
   for (const color of baseColorOrder) for (let copy = copiesUsed[color] + 1; copy <= colorCopies[color]; copy++) {
     extraColors.push({ kind: 'color', id: `${color}_${copy}`, color, completed: false });
   }
   for (const target of extraColors) {
     const sameColor = colors.filter(item => item.color === target.color);
-    const candidateSlots = floor.filter(p => !occupied.has(key(p)) && !walked.has(key(p)));
+    const candidateSlots = floor.filter(p => !occupied.has(key(p)) && !walked.has(key(p)) && !majorChokeKeys.has(key(p)));
     const fromSameColor = sameColor.map(item => distances(tiles, level.mazeWidth, level.mazeHeight, item));
     const spacedSlots = candidateSlots.filter(p => fromSameColor.every(map => (map.get(key(p)) ?? Infinity) >= level.minSameColorPathDistance));
     const chosen = pickSpreadPosition(spacedSlots.length ? spacedSlots : candidateSlots, occupied, sectorCounts, level, random);
@@ -259,8 +480,48 @@ function buildMission(level, tiles, floor, spawn, exit, random, colorSequence, c
     Object.assign(target, chosen); colors.push(target); occupied.add(key(target)); addSector(target);
   }
 
-  const items = [], pathSlots = [...new Map(walk.map(point => [key(point), point])).values()]
+  const minimumSpawnExitDistance = Math.max(colorSequence.length, Math.round((level.mazeWidth + level.mazeHeight) * 0.55));
+  const spawnDistances = distances(tiles, level.mazeWidth, level.mazeHeight, spawn);
+  const purpleTargets = colors.filter(target => target.color === 'purple');
+  if (!purpleTargets.length) throw new Error('出口距離驗證需要至少一個紫色目標。');
+  const purpleDistanceMaps = purpleTargets.map(target => distances(tiles, level.mazeWidth, level.mazeHeight, target));
+  const desiredFinishDistance = (level.minFinalPurpleToExitPathDistance + level.maxFinalPurpleToExitPathDistance) / 2;
+  const viableExits = floor.filter(point => {
+    const pointKey = key(point);
+    if (occupied.has(pointKey) || (spawnDistances.get(pointKey) ?? -Infinity) < minimumSpawnExitDistance) return false;
+    return purpleDistanceMaps.every(map => {
+      const distance = map.get(pointKey) ?? Infinity;
+      return distance >= level.minFinalPurpleToExitPathDistance && distance <= level.maxFinalPurpleToExitPathDistance;
+    });
+  });
+  if (!viableExits.length) throw new Error('找不到同時符合兩顆紫色收尾距離的出口位置。');
+  const otherSectors = viableExits.filter(point => sectorOf(point, level.mazeWidth, level.mazeHeight) !== sectorOf(spawn, level.mazeWidth, level.mazeHeight));
+  const exitPool = otherSectors.length ? otherSectors : viableExits;
+  const scoredExits = exitPool.map(point => {
+    const purpleDistances = purpleDistanceMaps.map(map => map.get(key(point)));
+    const averageDistance = purpleDistances.reduce((sum, distance) => sum + distance, 0) / purpleDistances.length;
+    const turns = purpleTargets.map(target => pathTurnCount(route(tiles, level.mazeWidth, level.mazeHeight, target, point) ?? []));
+    const averageTurns = turns.reduce((sum, count) => sum + count, 0) / turns.length;
+    const mostTurns = Math.max(...turns), fewestTurns = Math.min(...turns);
+    const turnRangePenalty = Math.max(0, mostTurns - 4) * 2 + Math.max(0, 2 - fewestTurns) * 2;
+    return { point, score: Math.abs(averageDistance - desiredFinishDistance) + Math.abs(averageTurns - 3) * 1.5 + turnRangePenalty + random() * 0.25 };
+  }).sort((a, b) => a.score - b.score);
+  const exit = scoredExits[0].point;
+  occupied.add(key(exit)); addSector(exit);
+  const exitPath = route(tiles, level.mazeWidth, level.mazeHeight, current, exit);
+  if (!exitPath) throw new Error('彩序完成後無法抵達出口。');
+  for (const point of exitPath.slice(1)) walk.push({ ...point });
+  for (const point of exitPath) walked.add(key(point));
+
+  const items = [], itemSectorCounts = new Map(), pathSlots = [...new Map(walk.map(point => [key(point), point])).values()]
     .filter(point => !occupied.has(key(point)));
+  const addItem = item => {
+    items.push(item);
+    const sector = sectorOf(item, level.mazeWidth, level.mazeHeight);
+    itemSectorCounts.set(sector, (itemSectorCounts.get(sector) ?? 0) + 1);
+    occupied.add(key(item));
+    addSector(item);
+  };
   const itemCounts = { nne: level.nneCount, coo: level.cooCount };
   const nextItemIds = { nne: 1, coo: 1 };
 
@@ -279,29 +540,29 @@ function buildMission(level, tiles, floor, spawn, exit, random, colorSequence, c
     });
 
     for (const kind of ['nne', 'coo']) for (let index = 0; index < earlyCounts[kind]; index++) {
-      const position = pickSpreadPosition(branchCandidates, occupied, sectorCounts, level, random);
+      const position = pickSpreadPosition(branchCandidates, occupied, sectorCounts, level, random, itemSectorCounts);
       if (!position) throw new Error(`出生點附近找不到不阻擋彩序的 ${kind.toUpperCase()} 支線位置。`);
       const item = { ...position, kind, id: `${kind}_${nextItemIds[kind]++}`, earlyResource: true };
-      items.push(item); occupied.add(key(item)); addSector(item); itemCounts[kind]--;
+      addItem(item); itemCounts[kind]--;
     }
   }
 
   for (const kind of ['nne', 'coo']) {
     if (!itemCounts[kind]) continue;
-    const position = pickSpreadPosition(pathSlots, occupied, sectorCounts, level, random);
+    const position = pickSpreadPosition(pathSlots, occupied, sectorCounts, level, random, itemSectorCounts);
     if (!position) throw new Error(`解答路徑缺少可放置 ${kind.toUpperCase()} 的空格。`);
     const item = { ...position, kind, id: `${kind}_${nextItemIds[kind]++}` };
-    items.push(item); occupied.add(key(item)); addSector(item);
+    addItem(item);
     pathSlots.splice(pathSlots.findIndex(p => key(p) === key(item)), 1);
     itemCounts[kind]--;
   }
   for (const kind of ['nne', 'coo']) for (let index = 0; index < itemCounts[kind]; index++) {
-    const position = pickSpreadPosition(floor, occupied, sectorCounts, level, random);
+    const position = pickSpreadPosition(floor, occupied, sectorCounts, level, random, itemSectorCounts);
     if (!position) throw new Error(`迷宮沒有足夠空間放置 ${kind.toUpperCase()}。`);
     const item = { ...position, kind, id: `${kind}_${nextItemIds[kind]++}` };
-    items.push(item); occupied.add(key(item)); addSector(item);
+    addItem(item);
   }
-  return { colors, items, walk, sequenceTargets };
+  return { exit, colors, items, walk, sequenceTargets };
 }
 
 function generateMazeAttempt(level, attempt) {
@@ -332,36 +593,54 @@ function generateMazeAttempt(level, attempt) {
   for (let y = 1; y < height - 1; y++) for (let x = 1; x < width - 1; x++) if (tiles[y][x] === 'floor') floor.push({ x, y });
   const spawn = { ...start }, reachable = distances(tiles, width, height, spawn);
   if (reachable.size !== floor.length) throw new Error('迷宮道路不連通。');
-  const minExitDistance = Math.max(colorSequence.length, Math.round((width + height) * 0.55));
-  const exitCandidates = floor.filter(p => reachable.get(key(p)) >= minExitDistance);
-  if (!exitCandidates.length) throw new Error('迷宮沒有足夠遠的出口候選格。');
-  const otherSectors = exitCandidates.filter(p => sectorOf(p, width, height) !== sectorOf(spawn, width, height));
-  const exitPool = otherSectors.length ? otherSectors : exitCandidates;
-  const farthest = Math.max(...exitPool.map(p => reachable.get(key(p))));
-  const farthestCandidates = exitPool.filter(p => reachable.get(key(p)) === farthest);
-  const exit = farthestCandidates[randomIndex(random, farthestCandidates.length)];
-
   const targetCount = Object.values(colorCopies).reduce((sum, count) => sum + count, 0);
   if (floor.length < targetCount + level.nneCount + level.cooCount + 2) throw new Error('迷宮沒有足夠的可用道路格。');
-  const mission = buildMission(level, tiles, floor, spawn, exit, random, colorSequence, colorCopies);
+  const avoidMajorColorChokes = level.stageId >= 1 && level.stageId <= 20;
+  const majorChokeKeys = avoidMajorColorChokes
+    ? new Set(analyzeChokePoints({ tiles, width, height, spawn }).majorChokePoints.map(key))
+    : new Set();
+  // Keep the target-placement random stream independent of moving exit selection later in generation.
+  random();
+  const mission = buildMission(level, tiles, floor, spawn, random, colorSequence, colorCopies, majorChokeKeys);
   const solutionPath = pathToDirections(mission.walk);
-  const maze = { width, height, tiles, spawn, exit: { ...exit }, colors: mission.colors, items: mission.items, solutionPath, sequenceTargetIds: mission.sequenceTargets };
+  const maze = { width, height, tiles, spawn, exit: { ...mission.exit }, colors: mission.colors, items: mission.items, solutionPath, sequenceTargetIds: mission.sequenceTargets };
   if (!validateSolutionPath(maze, solutionPath, colorSequence)) throw new Error('生成的解答無法依序完成所有彩色目標。');
   maze.quality = getMazeQuality(maze, mission.sequenceTargets);
+  if (Object.values(maze.quality.purpleExitDistances).length !== colorCopies.purple
+    || Object.values(maze.quality.purpleExitDistances).some(distance => distance < level.minFinalPurpleToExitPathDistance || distance > level.maxFinalPurpleToExitPathDistance)) {
+    throw new Error(`兩顆紫色距出口需介於 ${level.minFinalPurpleToExitPathDistance}–${level.maxFinalPurpleToExitPathDistance} 格。`);
+  }
   if (maze.quality.junctionCount < level.minimumJunctions) throw new Error('岔路數不足，重新生成版圖。');
   return maze;
 }
 
 export function generateMaze(level) {
   let lastError;
-  for (let attempt = 0; attempt < 100; attempt++) {
+  for (let attempt = 0; attempt < GENERATION_ATTEMPT_LIMIT; attempt++) {
     try {
-      return generateMazeAttempt(level, attempt);
+      const maze = generateMazeAttempt(level, attempt);
+      const colorConfig = getColorConfig(level);
+      const shouldValidateChoiceSafety = level.choiceSafeValidation
+        && colorConfig.colorRounds === 2
+        && colorConfig.baseColorOrder.length === 6
+        && colorConfig.colorSequence.length === 12
+        && Object.values(colorConfig.colorCopies).every(count => count === 2);
+      if (shouldValidateChoiceSafety) {
+        const choiceSafety = validateChoiceSafety(maze, colorConfig.colorSequence, colorConfig.baseColorOrder);
+        maze.quality.choiceSafety = choiceSafety;
+        if (!choiceSafety.choiceSafe) {
+          lastError = new Error(`存在 ${choiceSafety.deadlockBranches} 個合法選擇死鎖分支。`);
+          continue;
+        }
+      }
+      maze.generationAttempt = attempt;
+      maze.generationSeed = level.seed + attempt * 104729;
+      return maze;
     } catch (error) {
       lastError = error;
     }
   }
-  throw new Error(`無法產生符合彩序長度的迷宮（嘗試 100 次）：${lastError?.message ?? '設定無效'}`);
+  throw new Error(`無法產生符合關卡條件的迷宮（嘗試 ${GENERATION_ATTEMPT_LIMIT} 次）：${lastError?.message ?? '設定無效'}`);
 }
 
 export function cloneMaze(maze) {

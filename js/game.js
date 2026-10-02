@@ -1,5 +1,5 @@
 import { DEBUG } from './config.js';
-import { LEVELS, getColorConfig, validateLevel } from './levels.js';
+import { STAGES, getColorConfig, prepareStage, validateLevel } from './levels.js';
 import { cloneMaze, allReachable, solveMaze, validateSolutionPath } from './maze.js';
 import { takeTurn } from './turn.js';
 import { getVisionCells, updateColorMemory } from './memory.js';
@@ -7,12 +7,12 @@ import { buildBoard, clearPowerupNotice, fitBoard, hideWin, playFullVisionTransi
 import { bindInput } from './input.js';
 import { createRunState } from './run-state.js';
 
-let state, levelIndex = 0, autoSolveTimer = null;
+let state, stageIndex = 0, autoSolveTimer = null;
 const select = document.getElementById('level-select');
 const cheatButton = document.getElementById('cheat');
 const controls = [...document.querySelectorAll('[data-dir]')];
-LEVELS.forEach((level, index) => {
-  const option = document.createElement('option'); option.value = index; option.textContent = level.name; select.append(option);
+STAGES.forEach((stage, index) => {
+  const option = document.createElement('option'); option.value = index; option.textContent = stage.name; select.append(option);
 });
 
 function stopAutoSolve() {
@@ -23,11 +23,11 @@ function stopAutoSolve() {
   controls.forEach(button => { button.disabled = false; });
 }
 
-function start(index = levelIndex) {
+function start(index = stageIndex) {
   stopAutoSolve();
   clearPowerupNotice();
-  levelIndex = index;
-  const level = LEVELS[levelIndex];
+  stageIndex = index;
+  const level = prepareStage(STAGES[stageIndex]);
   validateLevel(level);
   const maze = cloneMaze(level.mazeTemplate);
   const sequence = getColorConfig(level).colorSequence;
@@ -59,7 +59,7 @@ function executeMove(direction) {
 
   if (state.won) {
     stopAutoSolve();
-    showWin(state, levelIndex < LEVELS.length - 1);
+    showWin(state, stageIndex < STAGES.length - 1);
   }
   return turn;
 }
@@ -76,7 +76,7 @@ function runAutoSolve() {
     return;
   }
 
-  start(levelIndex);
+  start(stageIndex);
   const sequence = getColorConfig(state.level).colorSequence;
   const solution = solveMaze(state.maze, sequence);
   if (!solution) {
@@ -106,7 +106,7 @@ function runAutoSolve() {
 bindInput(move, () => { state.debug = !state.debug; render(state); });
 document.getElementById('restart').addEventListener('click', () => start());
 document.getElementById('play-again').addEventListener('click', () => start());
-document.getElementById('next-level').addEventListener('click', () => { if (levelIndex < LEVELS.length - 1) start(levelIndex + 1); });
+document.getElementById('next-level').addEventListener('click', () => { if (stageIndex < STAGES.length - 1) start(stageIndex + 1); });
 document.getElementById('debug').addEventListener('click', () => { state.debug = !state.debug; render(state); });
 cheatButton.addEventListener('click', runAutoSolve);
 select.addEventListener('change', () => start(Number(select.value)));

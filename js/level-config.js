@@ -11,6 +11,7 @@ export function getBackgroundPartCount(level) {
 
 export function validateLevel(level) {
   if (level.mazeWidth < 7 || level.mazeHeight < 7 || level.mazeWidth % 2 !== 1 || level.mazeHeight % 2 !== 1) throw new Error('迷宮尺寸需為至少 7 的奇數。');
+  if (level.mazeWidth > 17 || level.mazeHeight > 17) throw new Error('正式 Stage 地圖不可超過原 LV5 的 17 × 17 尺寸。');
   if (level.visionRange < 1 || !Number.isInteger(level.initialMemoryLevel) || level.initialMemoryLevel < 1) throw new Error('視野或記憶設定無效。');
   if (!Number.isInteger(level.colorRounds) || level.colorRounds < 1 || !level.baseColorOrder.length || new Set(level.baseColorOrder).size !== level.baseColorOrder.length) throw new Error('彩序輪數或基礎顏色順序無效。');
   if (!Number.isInteger(level.seed)) throw new Error('每關需設定整數 seed，才能穩定重現版圖。');
@@ -47,6 +48,8 @@ export function validateLevel(level) {
   if (!Number.isFinite(level.branchDensity) || level.branchDensity < 0 || level.branchDensity > 1) throw new Error('branchDensity 需介於 0 與 1。');
   if (!Number.isInteger(level.minimumJunctions) || level.minimumJunctions < 0) throw new Error('minimumJunctions 需為非負整數。');
   if (!Number.isInteger(level.minTargetPathDistance) || level.minTargetPathDistance < 1 || !Number.isInteger(level.minSameColorPathDistance) || level.minSameColorPathDistance < 1) throw new Error('彩色目標路徑距離設定無效。');
+  if (!Number.isInteger(level.minFinalPurpleToExitPathDistance) || level.minFinalPurpleToExitPathDistance < 1) throw new Error('最後紫色到出口的最低實際路徑距離設定無效。');
+  if (!Number.isInteger(level.maxFinalPurpleToExitPathDistance) || level.maxFinalPurpleToExitPathDistance < level.minFinalPurpleToExitPathDistance) throw new Error('最後紫色到出口的最高實際路徑距離設定無效。');
   const { colorSequence, targetCount } = getColorConfig(level);
   const configuredColors = Object.keys(level.colorCopies).sort();
   if (configuredColors.length !== level.baseColorOrder.length || configuredColors.some(color => !level.baseColorOrder.includes(color))) throw new Error('colorCopies 必須對應所有基礎顏色。');

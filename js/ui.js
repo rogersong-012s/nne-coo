@@ -1,7 +1,7 @@
 import { COLOR_LIBRARY } from './config.js';
 import { cellVisibility, getEffectiveMemorySteps, getEffectiveVisionCells, getMemoryMarkers, isFeatureVisible, positionKey, recentHistory } from './memory.js';
 import { currentRound, nextColor } from './objectives.js';
-import { getColorConfig } from './levels.js';
+import { STAGES, getColorConfig } from './levels.js';
 
 const $ = id => document.getElementById(id);
 const refs = { board: $('board'), host: $('board-host'), controlWrapper: $('maze-control-wrapper'), order: $('order'), toast: $('toast'), win: $('win'), debug: $('debug-panel'), notice: null };
@@ -140,7 +140,16 @@ function debugText(state, vision, memoryPathCells, memoryWallCells, effectiveMem
     const distance = state.maze.quality?.colorPathDistances?.[`${copies[0].id} → ${copies[1].id}`];
     return `${copies[0].id} ↔ ${copies[1].id}: ${distance ?? '?'}`;
   }).filter(Boolean);
+  const purpleExitDistances = state.maze.quality?.purpleExitDistances ?? {};
+  const purpleExitSummary = Object.entries(purpleExitDistances).map(([id, distance]) => `${id}: ${distance}`).join(' · ') || '未知';
   return [
+    `STAGE: ${state.level.stageId} / ${STAGES.length}`,
+    `SIZE TIER: ${state.level.sizeTier}`,
+    `MAZE SIZE: ${state.maze.width} × ${state.maze.height}`,
+    `SOLUTION LENGTH: ${state.maze.quality?.solutionLength ?? state.maze.solutionPath.length}`,
+    `FINAL PURPLE → EXIT DISTANCE: ${state.maze.quality?.finalPurpleToExitDistance ?? '未知'} (${purpleExitSummary})`,
+    `MIN REQUIRED DISTANCE: ${state.level.minFinalPurpleToExitPathDistance}`,
+    `SOLVER: ${state.level.solverResult?.status ?? 'VALID'}`,
     `DEBUG 位置 (${state.player.x},${state.player.y})`,
     `MEM LEVEL: ${state.memoryLevel}`,
     `EFFECTIVE MEMORY: ${effectiveMemorySteps} STEPS`,
@@ -169,7 +178,7 @@ function debugText(state, vision, memoryPathCells, memoryWallCells, effectiveMem
 
 export function render(state) {
   const effectiveMemorySteps = getEffectiveMemorySteps(state.memoryLevel);
-  $('steps').textContent = state.steps; $('vision').textContent = state.visionRange; $('memory').textContent = state.memoryLevel; $('level-name').textContent = `${String(state.level.number).padStart(2, '0')}/10`;
+  $('steps').textContent = state.steps; $('vision').textContent = state.visionRange; $('memory').textContent = state.memoryLevel; $('level-name').textContent = `${state.level.stageId} / ${STAGES.length}`;
   $('debug').textContent = state.debug ? 'DEBUG ON' : 'DEBUG OFF'; $('debug').setAttribute('aria-pressed', String(state.debug));
   const { baseColorOrder, colorRounds, colorSequence } = getColorConfig(state.level);
   const targetColor = nextColor(state);
@@ -292,7 +301,9 @@ export function showWin(state, nextAvailable) {
   [['總步數', state.steps], ['NNE', state.nneCollected], ['COO', state.cooCollected], ['最終視野', state.visionRange], ['最終 MEM', state.memoryLevel]].forEach(([label, value]) => {
     const el = document.createElement('div'); el.innerHTML = `<span>${label}</span><strong>${value}</strong>`; result.append(el);
   });
-  $('next-level').disabled = !nextAvailable; $('next-level').textContent = nextAvailable ? '下一關' : '已完成所有關卡';
+  $('win-title').textContent = nextAvailable ? `STAGE ${state.level.stageId} CLEAR` : 'ALL STAGES CLEAR';
+  $('win-description').textContent = nextAvailable ? '成功走出彩序迷宮' : '你已完成全部 100 個 Stage。';
+  $('next-level').disabled = !nextAvailable; $('next-level').textContent = nextAvailable ? 'NEXT STAGE' : 'ALL STAGES CLEAR';
   refs.win.hidden = false;
 }
 export function playFullVisionTransition() {

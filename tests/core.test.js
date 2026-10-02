@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LEVELS, getColorConfig, validateLevel } from '../js/levels.js';
-import { cloneMaze, generateMaze, allReachable, hasOrderedRoute, isWalkable, solveMaze, validateSolutionPath } from '../js/maze.js';
+import { STAGES as LEVELS, SIZE_TIERS, getColorConfig, validateAllStages, validateLevel } from '../js/levels.js';
+import { cloneMaze, generateMaze, allReachable, hasOrderedRoute, isWalkable, solveMaze, validateChoiceSafety, validateSolutionPath } from '../js/maze.js';
 import { cellVisibility, getEffectiveMemorySteps, getEffectiveVisionCells, getMemoryMarkers, getVisionCells, isFeatureVisible, positionKey, recordMovement, recentHistory, updateColorMemory } from '../js/memory.js';
 import { currentRound, nextColor, resolveColor } from '../js/objectives.js';
 import { collectItem } from '../js/items.js';
@@ -47,20 +47,40 @@ function pathDistance(maze, start, goal, blocked = new Set()) {
   return Infinity;
 }
 
-test('campaign has ten increasing difficulty tiers, configurable counts, and color rounds', () => {
-  assert.equal(LEVELS.length, 10);
-  assert.equal(new Set(LEVELS.map(level => level.seed)).size, 10);
-  assert.deepEqual(LEVELS.map(level => level.mazeWidth), [11, 13, 15, 17, 17, 19, 21, 21, 23, 25]);
-  assert.ok(new Set(LEVELS.map(level => level.mazeTemplate.quality.sectorById.start)).size >= 7);
-  assert.ok(LEVELS.every((level, index) => index === 0 || level.mazeComplexity > LEVELS[index - 1].mazeComplexity));
-  assert.ok(LEVELS.every((level, index) => index === 0 || level.nneCount >= LEVELS[index - 1].nneCount));
-  assert.ok(LEVELS.every((level, index) => index === 0 || level.cooCount >= LEVELS[index - 1].cooCount));
-  for (let index = 1; index < LEVELS.length; index++) {
-    const previous = LEVELS[index - 1], level = LEVELS[index];
-    if (previous.mazeWidth === level.mazeWidth && previous.mazeHeight === level.mazeHeight) {
-      assert.notDeepEqual(generateMaze(previous).tiles, generateMaze(level).tiles);
-    }
+test('campaign has 100 fixed-seed Stages across five capped size tiers', () => {
+  const reports = validateAllStages();
+  assert.equal(reports.length, 100);
+  assert.ok(reports.every(result => result.status === 'VALID' && result.solutionLength > 0));
+  assert.ok(reports.every(result => result.solvable && result.choiceSafe && result.deadlockBranches === 0));
+  assert.ok(reports.every(result => result.testedChoiceBranches > 0 && result.testedChoiceBranches <= 64));
+  assert.ok(reports.every(result => result.safeChoiceBranches === result.reachableChoiceBranches));
+  assert.ok(reports.every(result => result.choiceEdgesTested === result.reachableChoiceEdges + result.unreachableChoiceEdges));
+  assert.equal(LEVELS.length, 100);
+  assert.equal(new Set(LEVELS.map(level => level.seed)).size, 100);
+  assert.equal(new Set(LEVELS.map(level => level.name)).size, 100);
+  assert.deepEqual(Object.values(SIZE_TIERS).map(({ mazeWidth, mazeHeight }) => [mazeWidth, mazeHeight]), [[11, 11], [13, 13], [15, 15], [17, 17], [17, 17]]);
+  for (let sizeTier = 1; sizeTier <= 5; sizeTier++) {
+    const tierStages = LEVELS.filter(stage => stage.sizeTier === sizeTier);
+    assert.equal(tierStages.length, 20);
+    assert.ok(tierStages.every(stage => stage.mazeWidth === SIZE_TIERS[sizeTier].mazeWidth && stage.mazeHeight === SIZE_TIERS[sizeTier].mazeHeight));
+    assert.ok(tierStages.every((stage, index) => index === 0 || stage.mazeComplexity > tierStages[index - 1].mazeComplexity));
   }
+  assert.ok(LEVELS.every(stage => stage.mazeWidth <= 17 && stage.mazeHeight <= 17));
+  assert.ok(LEVELS.every((stage, index) => stage.difficulty > (LEVELS[index - 1]?.difficulty ?? -1)));
+  for (const stage of LEVELS.slice(0, 20)) assert.deepEqual(stage.mazeTemplate.quality.colorMajorChokeIds, [], `${stage.name} keeps color targets off major choke points`);
+  const averageDifficultyByTier = Array.from({ length: 5 }, (_, tierIndex) => {
+    const tierReports = reports.filter(report => report.sizeTier === tierIndex + 1);
+    return tierReports.reduce((sum, report) => sum + report.difficultyScore, 0) / tierReports.length;
+  });
+  assert.ok(averageDifficultyByTier.every((score, index) => index === 0 || score > averageDifficultyByTier[index - 1]));
+  assert.deepEqual(LEVELS.slice(0, 20).map(stage => stage.mazeWidth), Array(20).fill(11));
+  assert.deepEqual(LEVELS.slice(20, 40).map(stage => stage.mazeWidth), Array(20).fill(13));
+  assert.deepEqual(LEVELS.slice(40, 60).map(stage => stage.mazeWidth), Array(20).fill(15));
+  assert.deepEqual(LEVELS.slice(60, 80).map(stage => stage.mazeWidth), Array(20).fill(17));
+  assert.deepEqual(LEVELS.slice(80, 100).map(stage => stage.mazeWidth), Array(20).fill(17));
+  assert.deepEqual(LEVELS.map(stage => [stage.earlyNneCount, stage.earlyCooCount]).slice(0, 60), Array(60).fill([0, 0]));
+  assert.ok(LEVELS.slice(60, 80).every(stage => stage.earlyNneCount === 1 && stage.earlyCooCount === 0));
+  assert.ok(LEVELS.slice(80, 100).every(stage => stage.earlyNneCount === 0 && stage.earlyCooCount === 1));
   for (const level of LEVELS) {
     assert.equal(level.visionRange, 2);
     assert.equal(level.initialMemoryLevel, 3);
@@ -72,22 +92,24 @@ test('campaign has ten increasing difficulty tiers, configurable counts, and col
     assert.equal(level.colorRounds, 2);
     assert.ok(level.branchDensity > 0);
     assert.ok(level.minTargetPathDistance >= 3);
+    assert.equal(level.minFinalPurpleToExitPathDistance, [5, 7, 9, 11, 14][level.sizeTier - 1]);
     assert.ok(Object.values(level.colorCopies).every(count => count === 2));
+    assert.equal(level.name, `Stage ${level.stageId}`);
     assert.deepEqual(getColorConfig(level).colorSequence, [
       'red', 'orange', 'yellow', 'green', 'blue', 'purple',
       'red', 'orange', 'yellow', 'green', 'blue', 'purple',
     ]);
   }
-  assert.deepEqual(LEVELS.map(level => (level.earlyNneCount ?? 0) + (level.earlyCooCount ?? 0)), [0, 0, 0, 1, 1, 1, 2, 2, 3, 3]);
   const level3 = { ...LEVELS[0], colorRounds: 3, colorCopies: Object.fromEntries(LEVELS[0].baseColorOrder.map(color => [color, 3])) };
   assert.equal(getColorConfig(level3).colorSequence.length, 18);
   assert.equal(getColorConfig(level3).targetCount, 18);
   validateLevel(level3);
 });
 
-test('each level owns an independent 12-part background config and a scattered reveal order', () => {
-  assert.equal(new Set(LEVELS.map(level => level.background)).size, 10);
-  assert.equal(new Set(LEVELS.map(level => level.background.revealOrder)).size, 10);
+test('each Stage owns an independent 12-part background config and a scattered reveal order', () => {
+  assert.equal(new Set(LEVELS.map(level => level.background)).size, 100);
+  assert.equal(new Set(LEVELS.map(level => level.background.revealOrder)).size, 100);
+  assert.equal(new Set(LEVELS.map(level => JSON.stringify(level.background.revealOrder))).size, 100);
   for (const level of LEVELS) {
     const config = level.background;
     assert.equal(config.image, 'assets/background/level_x.png');
@@ -102,73 +124,116 @@ test('each level owns an independent 12-part background config and a scattered r
   }
 });
 
-test('each seeded level produces a connected layout with unique targets and a valid solution', () => {
-  for (const level of LEVELS) {
-    validateLevel(level);
-    const config = getColorConfig(level);
-    assert.equal(level.wallLayout.length, level.mazeHeight);
-    assert.deepEqual(level.mazeTemplate.solutionPath, level.solutionPath);
-    assert.equal(level.mazeTemplate.spawn.x, level.start.x);
-    assert.equal(level.mazeTemplate.exit.x, level.exit.x);
-    for (const color of config.baseColorOrder) assert.equal(level.colorTargets[color].length, level.colorCopies[color]);
-    assert.equal(level.items.nne.length, level.nneCount);
-    assert.equal(level.items.coo.length, level.cooCount);
-    assert.ok(level.mazeTemplate.quality.junctionCount >= Math.ceil(level.mazeWidth * level.mazeHeight * 0.07));
-    for (let variation = 0; variation < 5; variation++) {
-      const maze = generateMaze({ ...level, seed: level.seed + variation * 104729 });
-      assert.equal(allReachable(maze), true);
-      assert.equal(hasOrderedRoute(maze, config.colorSequence), true);
-      assert.ok(validateSolutionPath(maze, maze.solutionPath, config.colorSequence));
-      const points = [maze.spawn, maze.exit, ...maze.colors, ...maze.items];
-      assert.equal(new Set(points.map(p => `${p.x},${p.y}`)).size, points.length);
-      assert.equal(maze.colors.length, config.targetCount);
-      assert.equal(maze.items.length, level.nneCount + level.cooCount);
-      assert.ok(maze.colors.every(target => target.kind === 'color' && target.completed === false && !Object.hasOwn(target, 'everActivated') && isWalkable(maze, target.x, target.y)));
-      assert.ok(maze.items.every(item => isWalkable(maze, item.x, item.y)));
-      const earlyItems = maze.items.filter(item => item.earlyResource);
-      assert.equal(earlyItems.length, (level.earlyNneCount ?? 0) + (level.earlyCooCount ?? 0));
-      assert.equal(earlyItems.filter(item => item.kind === 'nne').length, level.earlyNneCount ?? 0);
-      assert.equal(earlyItems.filter(item => item.kind === 'coo').length, level.earlyCooCount ?? 0);
-      const blockedColors = new Set(maze.colors.map(target => `${target.x},${target.y}`));
-      const solutionCells = new Set([`${maze.spawn.x},${maze.spawn.y}`]);
-      let solutionPosition = { ...maze.spawn };
-      const deltas = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
-      for (const direction of maze.solutionPath) {
-        const [dx, dy] = deltas[direction];
-        solutionPosition = { x: solutionPosition.x + dx, y: solutionPosition.y + dy };
-        solutionCells.add(`${solutionPosition.x},${solutionPosition.y}`);
-      }
-      for (const item of earlyItems) {
-        const distance = pathDistance(maze, maze.spawn, item, blockedColors);
-        assert.ok(distance >= 2 && distance <= level.earlyResourceMaxDistance, `${level.name} ${item.id} should be an early reachable branch`);
-        assert.ok(!solutionCells.has(`${item.x},${item.y}`), `${level.name} ${item.id} should stay off the solution route`);
-      }
-      assert.equal(new Set(maze.colors.map(target => target.id)).size, config.targetCount);
-      for (const color of config.baseColorOrder) assert.equal(maze.colors.filter(target => target.color === color).length, level.colorCopies[color]);
-      const itemSectors = new Set(Object.entries(maze.quality.sectorById).filter(([id]) => id !== 'start' && id !== 'exit').map(([, sector]) => sector));
-      assert.ok(itemSectors.size >= 7, `${level.name} should use most of the 3x3 sectors`);
-      const resourceSectors = new Set(maze.items.map(item => maze.quality.sectorById[item.id]));
-      assert.ok(resourceSectors.size >= 5, `${level.name} NNE / COO should remain distributed beyond the spawn area`);
-      const sectorCounts = Object.values(maze.quality.sectorById).reduce((counts, sector) => ({ ...counts, [sector]: (counts[sector] ?? 0) + 1 }), {});
-      assert.ok(Math.max(...Object.values(sectorCounts)) <= 4, `${level.name} should cap sector clustering`);
-      assert.ok(maze.quality.sequencePathDistances.every(item => item.distance >= level.minTargetPathDistance));
-      assert.ok(maze.quality.sequencePathDistances.every(item => item.junctions > 0));
-      assert.ok(maze.quality.junctionCount >= level.minimumJunctions);
-      assert.notEqual(maze.quality.sectorById.start, maze.quality.sectorById.exit);
-      for (const color of config.baseColorOrder) {
-        const copies = maze.colors.filter(target => target.color === color);
-        assert.ok(maze.quality.colorPathDistances[`${copies[0].id} → ${copies[1].id}`] >= level.minSameColorPathDistance);
-      }
-      assert.equal(maze.quality.solutionLength, maze.solutionPath.length);
-    }
-    assert.deepEqual(generateMaze(level), generateMaze(level));
+test('choice safety catches a Stage with a valid solver path but a deadlocking target choice', () => {
+  const level = LEVELS[0];
+  const config = getColorConfig(level);
+  const unsafeCandidate = generateMaze({ ...level, choiceSafeValidation: false });
+  assert.ok(solveMaze(unsafeCandidate, config.colorSequence), 'the ordinary solver can still find a complete route');
+  assert.ok(validateSolutionPath(unsafeCandidate, unsafeCandidate.solutionPath, config.colorSequence));
+  const safety = validateChoiceSafety(unsafeCandidate, config.colorSequence, config.baseColorOrder);
+  assert.equal(safety.choiceSafe, false);
+  assert.ok(safety.testedChoiceBranches > 0);
+  assert.ok(safety.deadlockBranches > 0, 'the legal alternative choices expose a softlock');
+});
+
+test('spotlight Stages exhaustively validate every reachable first-round choice', () => {
+  for (const stageId of [1, 2, 10, 20, 21, 40, 41, 60, 61, 80, 81, 90, 100]) {
+    const stage = LEVELS[stageId - 1];
+    const safety = validateChoiceSafety(stage.mazeTemplate, getColorConfig(stage).colorSequence, stage.baseColorOrder);
+    assert.equal(safety.choiceSafe, true, stage.name);
+    assert.equal(safety.deadlockBranches, 0, stage.name);
+    assert.ok(safety.testedChoiceBranches > 0 && safety.testedChoiceBranches <= 64, stage.name);
+    assert.equal(safety.safeChoiceBranches, safety.reachableChoiceBranches, stage.name);
+    assert.equal(safety.choiceEdgesTested, safety.reachableChoiceEdges + safety.unreachableChoiceEdges, stage.name);
   }
 });
 
+test('all 100 seeded Stages have unique layouts, legal targets, and both purple finishing distances', () => {
+  const layoutSignatures = new Map();
+  for (const level of LEVELS) {
+    validateLevel(level);
+    const config = getColorConfig(level);
+    const maze = level.mazeTemplate;
+    assert.ok(maze, `${level.name} is prepared by batch validation`);
+    const dimensions = `${level.mazeWidth}x${level.mazeHeight}`;
+    const tierLayouts = layoutSignatures.get(dimensions) ?? new Set();
+    const signature = level.wallLayout.join('');
+    assert.ok(!tierLayouts.has(signature), `${level.name} should have its own maze layout`);
+    tierLayouts.add(signature); layoutSignatures.set(dimensions, tierLayouts);
+    assert.equal(level.wallLayout.length, level.mazeHeight);
+    assert.deepEqual(maze.solutionPath, level.solutionPath);
+    assert.equal(maze.spawn.x, level.start.x);
+    assert.equal(maze.exit.x, level.exit.x);
+    for (const color of config.baseColorOrder) assert.equal(level.colorTargets[color].length, level.colorCopies[color]);
+    assert.equal(level.items.nne.length, level.nneCount);
+    assert.equal(level.items.coo.length, level.cooCount);
+    assert.equal(allReachable(maze), true);
+    assert.equal(hasOrderedRoute(maze, config.colorSequence), true);
+    assert.ok(validateSolutionPath(maze, maze.solutionPath, config.colorSequence));
+    const points = [maze.spawn, maze.exit, ...maze.colors, ...maze.items];
+    assert.equal(new Set(points.map(p => `${p.x},${p.y}`)).size, points.length);
+    assert.equal(maze.colors.length, config.targetCount);
+    assert.equal(maze.items.length, level.nneCount + level.cooCount);
+    assert.ok(maze.colors.every(target => target.kind === 'color' && target.completed === false && !Object.hasOwn(target, 'everActivated') && isWalkable(maze, target.x, target.y)));
+    assert.ok(maze.items.every(item => isWalkable(maze, item.x, item.y)));
+    const earlyItems = maze.items.filter(item => item.earlyResource);
+    assert.equal(earlyItems.length, (level.earlyNneCount ?? 0) + (level.earlyCooCount ?? 0));
+    assert.equal(earlyItems.filter(item => item.kind === 'nne').length, level.earlyNneCount ?? 0);
+    assert.equal(earlyItems.filter(item => item.kind === 'coo').length, level.earlyCooCount ?? 0);
+    const blockedColors = new Set(maze.colors.map(target => `${target.x},${target.y}`));
+    const solutionCells = new Set([`${maze.spawn.x},${maze.spawn.y}`]);
+    let solutionPosition = { ...maze.spawn };
+    const deltas = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+    for (const direction of maze.solutionPath) {
+      const [dx, dy] = deltas[direction];
+      solutionPosition = { x: solutionPosition.x + dx, y: solutionPosition.y + dy };
+      solutionCells.add(`${solutionPosition.x},${solutionPosition.y}`);
+    }
+    for (const item of earlyItems) {
+      const distance = pathDistance(maze, maze.spawn, item, blockedColors);
+      assert.ok(distance >= 2 && distance <= level.earlyResourceMaxDistance, `${level.name} ${item.id} should be an early reachable branch`);
+      assert.ok(!solutionCells.has(`${item.x},${item.y}`), `${level.name} ${item.id} should stay off the solution route`);
+    }
+    assert.equal(new Set(maze.colors.map(target => target.id)).size, config.targetCount);
+    for (const color of config.baseColorOrder) assert.equal(maze.colors.filter(target => target.color === color).length, level.colorCopies[color]);
+    const itemSectors = new Set(Object.entries(maze.quality.sectorById).filter(([id]) => id !== 'start' && id !== 'exit').map(([, sector]) => sector));
+    assert.ok(itemSectors.size >= 7, `${level.name} should use most of the 3x3 sectors`);
+    const resourceSectors = new Set(maze.items.map(item => maze.quality.sectorById[item.id]));
+    assert.ok(resourceSectors.size >= 5, `${level.name} NNE / COO should remain distributed beyond the spawn area`);
+    const sectorCounts = Object.values(maze.quality.sectorById).reduce((counts, sector) => ({ ...counts, [sector]: (counts[sector] ?? 0) + 1 }), {});
+    assert.ok(Math.max(...Object.values(sectorCounts)) <= 4, `${level.name} should cap sector clustering`);
+    assert.ok(maze.quality.sequencePathDistances.every(item => item.distance >= level.minTargetPathDistance));
+    assert.ok(maze.quality.sequencePathDistances.every(item => item.junctions > 0));
+    assert.ok(maze.quality.junctionCount >= level.minimumJunctions);
+    const purpleDistances = Object.values(maze.quality.purpleExitDistances);
+    assert.equal(purpleDistances.length, 2);
+    assert.ok(purpleDistances.every(distance => distance >= level.minFinalPurpleToExitPathDistance && distance <= level.maxFinalPurpleToExitPathDistance));
+    const finalPurple = maze.colors.find(target => target.id === maze.sequenceTargetIds.at(-1));
+    assert.equal(maze.quality.finalPurpleToExitDistance, pathDistance(maze, finalPurple, maze.exit));
+    for (const purple of maze.colors.filter(target => target.color === 'purple')) {
+      assert.equal(pathDistance(maze, purple, maze.exit), maze.quality.purpleExitDistances[purple.id]);
+    }
+    for (const color of config.baseColorOrder) {
+      const copies = maze.colors.filter(target => target.color === color);
+      assert.ok(maze.quality.colorPathDistances[`${copies[0].id} → ${copies[1].id}`] >= level.minSameColorPathDistance);
+    }
+    assert.equal(maze.quality.solutionLength, maze.solutionPath.length);
+    const resetCopy = cloneMaze(maze);
+    assert.deepEqual(resetCopy.tiles, maze.tiles, `${level.name} reset keeps its layout`);
+    assert.deepEqual(resetCopy.solutionPath, maze.solutionPath, `${level.name} reset keeps its stored solution`);
+  }
+  assert.equal(layoutSignatures.get('11x11').size, 20);
+  assert.equal(layoutSignatures.get('13x13').size, 20);
+  assert.equal(layoutSignatures.get('15x15').size, 20);
+  assert.equal(layoutSignatures.get('17x17').size, 40);
+});
+
 test('a configured three-round level generates 18 targets without hardcoded two-round placement', () => {
+  // Three rounds need a larger maze than the smallest tutorial layout to
+  // preserve useful target spacing while still exercising the generic config.
   const level = {
-    ...LEVELS[0], colorRounds: 3,
-    colorCopies: Object.fromEntries(LEVELS[0].baseColorOrder.map(color => [color, 3])),
+    ...LEVELS[20], colorRounds: 3,
+    colorCopies: Object.fromEntries(LEVELS[20].baseColorOrder.map(color => [color, 3])),
   };
   validateLevel(level);
   for (let i = 0; i < 20; i++) {
@@ -585,7 +650,9 @@ test('only successful player moves add movement history', () => {
   assert.equal(takeTurn(state, 'left').moved, false);
   assert.equal(state.steps, 0); assert.equal(state.movementHistory.length, 0);
   assert.equal(state.colorMemory.get(rememberedTarget.id), 2, 'a wall collision does not advance color memory');
-  const direction = [['right', 1, 0], ['down', 0, 1]].find(([, dx, dy]) => isWalkable(maze, state.player.x + dx, state.player.y + dy))[0];
+  const direction = [['up', 0, -1], ['down', 0, 1], ['left', -1, 0], ['right', 1, 0]]
+    .find(([, dx, dy]) => isWalkable(maze, state.player.x + dx, state.player.y + dy))?.[0];
+  assert.ok(direction, 'the generated spawn has at least one legal adjacent floor cell');
   assert.equal(takeTurn(state, direction).moved, true);
   assert.equal(state.steps, 1); assert.equal(state.movementHistory.length, 1);
   state.won = true; assert.equal(takeTurn(state, direction).moved, false);
@@ -644,9 +711,9 @@ test('maze perimeter arrows and bottom direction pad use one click movement path
   }
 });
 
-test('Auto Solve can execute each of the ten gated campaign solutions through the exit', () => {
+test('Auto Solve can execute all 100 gated Stage solutions through the exit', () => {
   for (const level of LEVELS) {
-    const maze = generateMaze(level);
+    const maze = cloneMaze(level.mazeTemplate);
     const sequence = getColorConfig(level).colorSequence;
     const solution = solveMaze(maze, sequence);
     assert.ok(solution);

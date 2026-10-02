@@ -15,8 +15,8 @@
         <div class="stat"><span>STEP</span><strong id="steps">0</strong></div>
         <div class="stat"><span>VIS</span><strong id="vision">2</strong></div>
         <div class="stat"><span>MEM</span><strong id="memory">3</strong></div>
-        <div class="stat level-name"><span>LEVEL</span><strong id="level-name">01/10</strong></div>
-        <div class="menu"><select id="level-select" aria-label="選擇關卡"></select><button id="restart" type="button" title="重置目前關卡">重置</button></div>
+        <div class="stat level-name"><span>STAGE</span><strong id="level-name">1 / 100</strong></div>
+        <div class="menu"><select id="level-select" aria-label="選擇 Stage"></select><button id="restart" type="button" title="重置目前 Stage">重置</button></div>
       </section>
     </header>
     <section class="order-panel" aria-label="彩色順序"><div class="order-label"><span>彩序</span><span id="order-hint">尋找紅色</span></div><div id="order" class="order"></div></section>
@@ -44,7 +44,7 @@
       </button>
     </section>
   </main>
-  <div id="win" class="modal" hidden><div class="modal-card"><div class="eyebrow">NNECOO · COMPLETE</div><h1>ESCAPED!</h1><p>成功走出彩序迷宮</p><div id="results" class="results"></div><div class="modal-actions"><button id="play-again" type="button">重新開始</button><button id="next-level" type="button">下一關</button></div></div></div>
+  <div id="win" class="modal" hidden><div class="modal-card"><div class="eyebrow">NNECOO · COMPLETE</div><h1 id="win-title">STAGE CLEAR</h1><p id="win-description">成功走出彩序迷宮</p><div id="results" class="results"></div><div class="modal-actions"><button id="play-again" type="button">重新開始</button><button id="next-level" type="button">NEXT STAGE</button></div></div></div>
   <script type="module" src="js/game.js"></script>
 </body>
 </html>
