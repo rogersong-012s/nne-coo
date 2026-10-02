@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 彩序迷宮 · NNECOO
 
 純 HTML、CSS、JavaScript 的瀏覽器迷宮 Demo。把整個資料夾部署到 GitHub Pages 即可遊玩，無需建置或後端。本機預覽請使用靜態 HTTP 伺服器。
@@ -24,3 +25,7 @@
 Debug 開啟時會展開全地圖，以不同樣式標出 `mainVisionCells`、`sideVisionCells` 和記憶標記，並列出玩家座標、VISION RANGE、NNE／COO 位置、完整 `movementHistory` 和目前使用的最近位置。
 
 所有程式以 ES modules 分檔，若瀏覽器的本機檔案政策不允許 `file://` 載入模組，可用任意靜態伺服器預覽，GitHub Pages 可直接運行。
+=======
+# nne-coo
+A browser-based maze puzzle where players follow a color sequence, manage limited vision and memory, collect NNE/COO upgrades, and gradually reveal the hidden image.
+>>>>>>> 1b1e24fe7fe8c7a8c39932c52299d547c0a28bd2
