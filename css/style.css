@@ -49,7 +49,15 @@ button:focus-visible, select:focus-visible { outline: 2px solid #89c6ff; outline
 .order-chip.done::after { content: '✓'; position: absolute; inset: -2px; display: grid; place-items: center; color: #07101b; font: 800 10px/1 system-ui, sans-serif; text-shadow: 0 0 1px #fff; }
 
 .board-host { min-height: 0; min-width: 0; flex: 1; display: flex; justify-content: center; align-items: center; position: relative; overflow: hidden; }
-.board { --cell: 25px; position: relative; isolation: isolate; display: grid; grid-auto-rows: var(--cell); flex: none; background: #070b14; border: 2px solid #435477; border-radius: 5px; box-shadow: 0 0 0 4px #0b1426, 0 9px 25px #02050a; overflow: hidden; }
+.maze-control-wrapper { --maze-zone-x: 32px; --maze-zone-y: 32px; width: 100%; height: 100%; min-width: 0; min-height: 0; display: grid; grid-template-columns: var(--maze-zone-x) minmax(0, 1fr) var(--maze-zone-x); grid-template-rows: var(--maze-zone-y) minmax(0, 1fr) var(--maze-zone-y); position: relative; }
+.maze-arrow { z-index: 2; display: grid; place-items: center; width: 32px; height: 32px; justify-self: center; align-self: center; padding: 0; border: 1px solid #56698788; border-radius: 9px; background: #131e32b5; color: #aabbd6; font-size: 21px; line-height: 1; opacity: .85; touch-action: manipulation; user-select: none; -webkit-tap-highlight-color: transparent; transition: color 100ms ease, background-color 100ms ease, opacity 100ms ease, transform 100ms ease; }
+.maze-arrow:hover { color: #eff7ff; background: #294064; opacity: 1; }
+.maze-arrow:active { color: #fff; background: #35517b; transform: scale(.94); }
+.maze-arrow-up { grid-column: 2; grid-row: 1; }
+.maze-arrow-down { grid-column: 2; grid-row: 3; }
+.maze-arrow-left { grid-column: 1; grid-row: 2; }
+.maze-arrow-right { grid-column: 3; grid-row: 2; }
+.board { --cell: 25px; grid-column: 2; grid-row: 2; justify-self: center; align-self: center; position: relative; isolation: isolate; display: grid; grid-auto-rows: var(--cell); flex: none; background: #070b14; border: 2px solid #435477; border-radius: 5px; box-shadow: 0 0 0 4px #0b1426, 0 9px 25px #02050a; overflow: hidden; }
 .board-background { position: absolute; inset: 0; z-index: 0; display: grid; grid-template-columns: repeat(var(--background-columns), 1fr); grid-template-rows: repeat(var(--background-rows), 1fr); overflow: hidden; pointer-events: none; }
 .background-part { display: block; min-width: 0; min-height: 0; background-repeat: no-repeat; opacity: 0; transition: opacity 480ms ease; }
 .background-part.revealed { opacity: var(--part-opacity); }
@@ -117,7 +125,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid #89c6ff; outline
 
 .bottom { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 26px; flex: none; }
 .legend { margin: 0; color: #8798b7; font-size: 10px; line-height: 1.2; }
-.mobile-gesture-hint { display: none; }
+.mobile-controls-hint { display: none; }
 .controls { display: none; }
 .controls button:disabled { opacity: .38; cursor: wait; }
 .help { display: flex; align-items: center; gap: 8px; color: #8294b4; font-size: 10px; white-space: nowrap; }
@@ -197,7 +205,8 @@ button:focus-visible, select:focus-visible { outline: 2px solid #89c6ff; outline
 
 /* Mobile portrait layout: larger targets while reserving most height for the maze. */
 @media (max-width: 700px) {
-  .app { gap: 3px; padding: 5px 6px max(5px, env(safe-area-inset-bottom)); }
+  .app { gap: 3px; padding: 5px 0 max(5px, env(safe-area-inset-bottom)); }
+  .topbar, .order-panel, .bottom { margin-left: 6px; margin-right: 6px; }
   .topbar { display: grid; grid-template-columns: 1fr; gap: 3px; min-height: 0; }
   .brand { justify-content: center; gap: 6px; }
   .brand strong { font-size: clamp(17px, 4.8vw, 20px); }
@@ -215,29 +224,31 @@ button:focus-visible, select:focus-visible { outline: 2px solid #89c6ff; outline
   .sequence-arrow { font-size: 9px; }
   .order-chip { flex-basis: 12px; width: 12px; height: 12px; }
   .order-chip.done::after { font-size: 9px; }
+  .maze-control-wrapper { --maze-zone-x: clamp(35px, 8vw, 48px); --maze-zone-y: clamp(40px, 5vh, 46px); }
+  .maze-arrow { width: 100%; height: 100%; font-size: 23px; background: #131e32a8; }
   .cheat-idle { font-size: 0; }
   .cheat-idle::after { content: '解答'; font-size: 10px; }
-  .bottom { min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; grid-template-rows: auto auto; align-items: center; gap: 4px 5px; }
+  .bottom { position: relative; min-height: 120px; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; justify-items: center; align-items: center; gap: 4px; }
   .legend { grid-column: 1 / -1; grid-row: 1; display: flex; justify-content: center; flex-wrap: wrap; column-gap: 8px; row-gap: 3px; font-size: 9px; text-align: center; }
   .legend-items { white-space: nowrap; }
-  .mobile-gesture-hint { display: inline; color: #a9bad6; font-size: 10px; }
-  .board { touch-action: none; overscroll-behavior: contain; user-select: none; -webkit-user-select: none; }
-  .controls { grid-column: 1; grid-row: 2; justify-self: center; display: grid; grid-template-columns: repeat(3, clamp(48px, 14vw, 56px)); grid-template-rows: repeat(2, clamp(48px, 14vw, 56px)); gap: 4px; }
+  .mobile-controls-hint { display: inline; color: #a9bad6; font-size: 10px; }
+  .controls { grid-column: 1; grid-row: 2; justify-self: center; align-self: end; display: grid; grid-template-columns: repeat(3, clamp(48px, 14vw, 56px)); grid-template-rows: repeat(2, clamp(48px, 14vw, 56px)); gap: 4px; }
   .controls button { min-width: 48px; min-height: 48px; padding: 0; font-size: 22px; font-weight: 700; touch-action: manipulation; user-select: none; -webkit-tap-highlight-color: transparent; transition: transform 80ms ease, background-color 80ms ease; }
   .controls button:active { transform: scale(.94); background: #35517b; }
   .controls [data-dir=up] { grid-column: 2; grid-row: 1; }
   .controls [data-dir=left] { grid-column: 1; grid-row: 2; }
   .controls [data-dir=down] { grid-column: 2; grid-row: 2; }
   .controls [data-dir=right] { grid-column: 3; grid-row: 2; }
-  .help { grid-column: 2; grid-row: 2; justify-content: center; gap: 0; font-size: 10px; }
+  .maze-arrow:active { background: #35517b; opacity: 1; }
+  .help { position: absolute; left: 0; bottom: 4px; z-index: 2; justify-content: center; gap: 0; font-size: 10px; }
   .help span { display: none; }
   .help button { min-width: 54px; min-height: 48px; padding: 5px 7px; font-size: 10px; }
-  .cheat-button { grid-column: 3; grid-row: 2; justify-self: stretch; min-width: 58px; min-height: 48px; padding: 5px 7px; font-size: 10px; }
+  .cheat-button { position: absolute; right: 0; bottom: 4px; z-index: 2; min-width: 58px; min-height: 48px; padding: 5px 7px; font-size: 10px; }
   .debug-panel { width: min(76vw, 410px); max-height: 62%; font-size: 9px; }
 }
 
 @media (max-width: 360px) {
-  .app { padding-right: 5px; padding-left: 5px; }
+  .app { padding-right: 0; padding-left: 0; }
   .dashboard { gap: 3px; }
   .stat { min-width: 0; gap: 3px; padding: 3px; }
   .stat span { letter-spacing: 0; }
@@ -252,7 +263,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid #89c6ff; outline
 
 /* Short mobile landscape viewports keep touch targets usable and compact the header. */
 @media (max-width: 700px) and (max-height: 600px) and (orientation: landscape) {
-  .app { gap: 2px; padding: 3px 6px max(3px, env(safe-area-inset-bottom)); }
+  .app { gap: 2px; padding: 3px 0 max(3px, env(safe-area-inset-bottom)); }
   .topbar { display: flex; align-items: center; gap: 6px; }
   .brand span, .legend, .help span { display: none; }
   .dashboard { display: flex; flex: 1; justify-content: flex-end; gap: 2px; }
@@ -265,10 +276,11 @@ button:focus-visible, select:focus-visible { outline: 2px solid #89c6ff; outline
   .order-panel { padding: 1px 5px; }
   .order-label { font-size: 9px; }
   .order-chip { flex-basis: 10px; width: 10px; height: 10px; }
-  .bottom { display: flex; justify-content: space-between; gap: 6px; min-height: 100px; }
+  .bottom { display: grid; grid-template-columns: 1fr; grid-template-rows: 1fr auto; min-height: 100px; }
   .controls { display: grid; grid-template-columns: repeat(3, 48px); grid-template-rows: repeat(2, 48px); gap: 4px; }
   .controls button { min-width: 48px; min-height: 48px; font-size: 20px; }
-  .help { gap: 0; }
+  .help { position: absolute; left: 0; bottom: 4px; gap: 0; }
   .help button, .cheat-button { min-height: 48px; padding: 4px 6px; font-size: 9px; }
+  .cheat-button { position: absolute; right: 0; bottom: 4px; }
   .cheat-idle::after { font-size: 9px; }
 }

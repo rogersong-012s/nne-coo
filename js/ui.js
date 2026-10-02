@@ -4,15 +4,25 @@ import { currentRound, nextColor } from './objectives.js';
 import { getColorConfig } from './levels.js';
 
 const $ = id => document.getElementById(id);
-const refs = { board: $('board'), host: $('board-host'), order: $('order'), toast: $('toast'), win: $('win'), debug: $('debug-panel'), notice: null };
+const refs = { board: $('board'), host: $('board-host'), controlWrapper: $('maze-control-wrapper'), order: $('order'), toast: $('toast'), win: $('win'), debug: $('debug-panel'), notice: null };
 let toastTimer, powerupNoticeTimer = null, powerupNoticeGeneration = 0;
 const reportedBackgroundFailures = new Set();
 
 export function fitBoard(state) {
   const rect = refs.host.getBoundingClientRect();
-  const size = Math.max(1, Math.floor(Math.min(rect.width / state.maze.width, rect.height / state.maze.height)));
-  refs.board.style.width = `${size * state.maze.width}px`;
-  refs.board.style.height = `${size * state.maze.height}px`;
+  const leftZone = refs.controlWrapper.querySelector('.maze-arrow-left').offsetWidth;
+  const rightZone = refs.controlWrapper.querySelector('.maze-arrow-right').offsetWidth;
+  const topZone = refs.controlWrapper.querySelector('.maze-arrow-up').offsetHeight;
+  const bottomZone = refs.controlWrapper.querySelector('.maze-arrow-down').offsetHeight;
+  const availableWidth = Math.max(1, rect.width - leftZone - rightZone);
+  const availableHeight = Math.max(1, rect.height - topZone - bottomZone);
+  const size = Math.max(1, Math.floor(Math.min(availableWidth / state.maze.width, availableHeight / state.maze.height)));
+  const boardWidth = size * state.maze.width;
+  const boardHeight = size * state.maze.height;
+  refs.controlWrapper.style.width = `${boardWidth + leftZone + rightZone}px`;
+  refs.controlWrapper.style.height = `${boardHeight + topZone + bottomZone}px`;
+  refs.board.style.width = `${boardWidth}px`;
+  refs.board.style.height = `${boardHeight}px`;
   refs.board.style.setProperty('--cell', `${size}px`);
 }
 

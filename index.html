@@ -21,11 +21,17 @@
     </header>
     <section class="order-panel" aria-label="彩色順序"><div class="order-label"><span>彩序</span><span id="order-hint">尋找紅色</span></div><div id="order" class="order"></div></section>
     <div id="board-host" class="board-host">
-      <div id="board" class="board" role="grid" aria-label="迷宮"></div>
+      <div id="maze-control-wrapper" class="maze-control-wrapper">
+        <button class="maze-arrow maze-arrow-up" type="button" data-dir="up" aria-label="迷宮外框：向上移動">↑</button>
+        <button class="maze-arrow maze-arrow-down" type="button" data-dir="down" aria-label="迷宮外框：向下移動">↓</button>
+        <button class="maze-arrow maze-arrow-left" type="button" data-dir="left" aria-label="迷宮外框：向左移動">←</button>
+        <button class="maze-arrow maze-arrow-right" type="button" data-dir="right" aria-label="迷宮外框：向右移動">→</button>
+        <div id="board" class="board" role="grid" aria-label="迷宮"></div>
+      </div>
       <pre id="debug-panel" class="debug-panel" hidden></pre><div id="toast" class="toast" role="status" aria-live="polite"></div>
     </div>
     <section class="bottom">
-      <p class="legend"><span class="legend-items">● 玩家　🔴🟠🟡🟢🔵🟣 目標　✦ NNE　✧ COO　▣ 出口</span><span class="mobile-gesture-hint">點擊玩家相對方向或滑動移動</span></p>
+      <p class="legend"><span class="legend-items">● 玩家　🔴🟠🟡🟢🔵🟣 目標　✦ NNE　✧ COO　▣ 出口</span><span class="mobile-controls-hint">點迷宮四周箭頭或下方方向鍵</span></p>
       <div class="help"><span>WASD / 方向鍵</span><button id="debug" type="button" aria-pressed="false">DEBUG OFF</button></div>
       <div class="controls" aria-label="方向控制">
         <button type="button" data-dir="up" aria-label="向上移動">↑</button>
