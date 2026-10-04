@@ -53,7 +53,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid #89c6ff; outline
 .board-background { position: absolute; inset: 0; z-index: 0; display: grid; grid-template-columns: repeat(var(--background-columns), 1fr); grid-template-rows: repeat(var(--background-rows), 1fr); overflow: hidden; pointer-events: none; }
 .background-part { display: block; min-width: 0; min-height: 0; background-repeat: no-repeat; opacity: 0; transition: opacity 480ms ease; }
 .background-part.revealed { opacity: var(--part-opacity); }
-.cell { z-index: 1; width: var(--cell); height: var(--cell); display: flex; align-items: center; justify-content: center; position: relative; border: 1px solid #ffffff08; overflow: hidden; transition: background-color 650ms ease; }
+.cell { z-index: 1; width: var(--cell); height: var(--cell); display: flex; align-items: center; justify-content: center; position: relative; border: 1px solid #ffffff08; overflow: hidden; transition: background-color var(--player-move-transition, 60ms) ease-out; }
 .cell.revealed.floor { background: rgba(17, 26, 40, .73); }
 .cell.revealed.wall { background: rgba(53, 68, 93, .88); box-shadow: inset 0 -3px 0 #29364bd9; }
 .cell.unknown { background: rgba(8, 13, 24, .72); border-color: #0a1020; box-shadow: none; }
@@ -83,11 +83,16 @@ button:focus-visible, select:focus-visible { outline: 2px solid #89c6ff; outline
 .cell.exit.unlocked .cell-content { color: #a6f4d0; text-shadow: 0 0 10px #66f7b4; }
 .board.final-reveal .cell.exit.unlocked .cell-content { animation: exit-reveal .9s ease-out; }
 .cell.player { z-index: 5; background: #335777; }
-.cell.adjacent-player-cell { cursor: pointer; }
+.player-token { position: absolute; z-index: 6; top: 0; left: 0; width: var(--cell); height: var(--cell); display: grid; place-items: center; pointer-events: none; color: #fff; font-size: calc(var(--cell) * .54); line-height: 1; text-shadow: 0 0 6px #fff, 0 0 12px #86d5ff; transition: transform var(--player-move-transition, 60ms) ease-out; will-change: transform; }
+.player-token.position-reset { transition: none; }
+.cell.click-move-available, .cell.memory-click-move-available { cursor: pointer; }
 .cell.player .cell-content { color: white; text-shadow: 0 0 6px white, 0 0 12px #86d5ff; }
 @media (hover: hover) and (pointer: fine) {
-  .cell.adjacent-player-cell.vision-current:hover { outline: 1px solid #cdeeff99; outline-offset: -2px; }
+  .cell.click-move-available:hover,
+  .cell.memory-click-move-available:hover { outline: 1px solid #cdeeff99; outline-offset: -2px; }
 }
+.cell.click-move-destination::before { content: ''; position: absolute; inset: 3px; z-index: 4; border: 2px solid #b9eaffbd; border-radius: 3px; pointer-events: none; animation: click-move-destination 150ms ease-out both; }
+@keyframes click-move-destination { from { opacity: .35; transform: scale(.9); } to { opacity: 1; transform: scale(1); } }
 .powerup-notice {
   position: absolute; z-index: 7; left: 50%; top: 50%; display: grid; gap: 5px; justify-items: center;
   width: max-content; max-width: 90%; pointer-events: none; opacity: 0; visibility: hidden;

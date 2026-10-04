@@ -1,15 +1,10 @@
+import { DEBUG_INPUT_PERFORMANCE } from './config.js';
+
 const keys = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', w: 'up', a: 'left', s: 'down', d: 'right' };
 
 export function directionForKey(key) { return keys[key] ?? keys[key.toLowerCase()] ?? null; }
 
-export function directionForAdjacentCell(player, cell) {
-  const dx = cell.x - player.x, dy = cell.y - player.y;
-  if (dx === 0 && dy === -1) return 'up';
-  if (dx === 0 && dy === 1) return 'down';
-  if (dx === -1 && dy === 0) return 'left';
-  if (dx === 1 && dy === 0) return 'right';
-  return null;
-}
+const now = () => globalThis.performance?.now?.() ?? Date.now();
 
 export function cellFromBoardPoint(board, width, height, clientX, clientY) {
   if (!board || width < 1 || height < 1) return null;
@@ -25,18 +20,38 @@ export function cellFromBoardPoint(board, width, height, clientX, clientY) {
   return x >= 0 && x < width && y >= 0 && y < height ? { x, y } : null;
 }
 
-export function bindBoardInput(board, getBoardState, onMove) {
+export function bindBoardInput(board, getBoardState, onTarget) {
   if (!board) return;
+  let lastPointerDownAt = null;
+  if (DEBUG_INPUT_PERFORMANCE) {
+    board.addEventListener('pointerdown', () => { lastPointerDownAt = now(); }, { passive: true });
+  }
   // A click is generated once for mouse or a completed touch. Avoid parallel
   // pointerdown/touchend handlers, which would make one tap move twice.
   board.addEventListener('click', event => {
+    const clickReceivedAt = DEBUG_INPUT_PERFORMANCE ? now() : null;
     const targetCell = event.target.closest?.('.cell');
     if (!targetCell || !board.contains(targetCell)) return;
-    const { width, height, player } = getBoardState();
-    const cell = cellFromBoardPoint(board, width, height, event.clientX, event.clientY);
-    if (!cell || cell.x !== Number(targetCell.dataset.x) || cell.y !== Number(targetCell.dataset.y)) return;
-    const direction = directionForAdjacentCell(player, cell);
-    if (direction) onMove(direction);
+    const { width, height } = getBoardState();
+    const datasetCell = { x: Number(targetCell.dataset.x), y: Number(targetCell.dataset.y) };
+    if (!Number.isInteger(datasetCell.x) || !Number.isInteger(datasetCell.y)
+      || datasetCell.x < 0 || datasetCell.y < 0 || datasetCell.x >= width || datasetCell.y >= height) return;
+
+    // The hit-tested .cell is the browser's authoritative target. Keep the
+    // geometry conversion for responsive-board validation, but do not drop a
+    // valid click when browser zoom, touch synthesis, or subpixel layout makes
+    // the pointer-derived cell differ by a fraction from that hit target.
+    const pointerCell = cellFromBoardPoint(board, width, height, event.clientX, event.clientY);
+    const cell = pointerCell?.x === datasetCell.x && pointerCell?.y === datasetCell.y
+      ? pointerCell
+      : datasetCell;
+    const cellResolvedAt = DEBUG_INPUT_PERFORMANCE ? now() : null;
+    if (DEBUG_INPUT_PERFORMANCE) {
+      const pointerLatency = lastPointerDownAt === null ? 'n/a' : `${(clickReceivedAt - lastPointerDownAt).toFixed(2)}ms`;
+      console.info(`[Click Perf] click received; pointerdown → click ${pointerLatency}`);
+      console.info(`[Click Perf] cell resolved +${(cellResolvedAt - clickReceivedAt).toFixed(2)}ms (${cell.x},${cell.y})`);
+    }
+    onTarget(cell, DEBUG_INPUT_PERFORMANCE ? { clickReceivedAt, cellResolvedAt } : null);
   });
 }
 

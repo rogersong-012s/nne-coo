@@ -14,7 +14,7 @@ export const TUTORIAL_STEPS = Object.freeze([
   {
     id: 'player', actionType: 'info', target: '.cell.player', fallback: '#board', placement: 'top',
     title: '這是你的位置',
-    body: '● 是玩家角色。每次移動一格，可以使用 WASD、方向鍵、下方方向控制，或直接點擊上下左右相鄰格。',
+    body: '● 是玩家角色。可使用 WASD、方向鍵或下方方向控制一步步移動，也能點擊視野中可達格，讓玩家沿最短路徑前往。',
   },
   {
     id: 'stats', actionType: 'info', target: '[data-tutorial-target="stats"]',

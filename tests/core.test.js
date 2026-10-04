@@ -6,7 +6,10 @@ import { cellVisibility, getEffectiveMemorySteps, getEffectiveVisionCells, getMe
 import { currentRound, nextColor, resolveColor } from '../js/objectives.js';
 import { collectItem } from '../js/items.js';
 import { takeTurn } from '../js/turn.js';
-import { bindBoardInput, bindInput, cellFromBoardPoint, directionForAdjacentCell, directionForKey } from '../js/input.js';
+import { ALLOW_MEMORY_CLICK_MOVE, CLICK_MOVE_STEP_INTERVAL } from '../js/config.js';
+import { ClickMoveController, createClickNavigationSnapshot, findClickMovePath, getClickMoveReachableCells } from '../js/click-navigation.js';
+import { canMovePlayerInDirection } from '../js/player.js';
+import { bindBoardInput, bindInput, cellFromBoardPoint, directionForKey } from '../js/input.js';
 import { createRunState } from '../js/run-state.js';
 import { advanceTutorial, canMoveDuringTutorial, createTutorialState, currentTutorialStep, isTutorialMoveAllowed, TUTORIAL_STEPS, tutorialActionCompleted } from '../js/tutorial.js';
 
@@ -30,6 +33,47 @@ function makeObjectiveState({ colors = ['red', 'orange', 'yellow'], rounds = 2 }
     player: { x: 1, y: 1 }, steps: 0, sequenceProgress: 0, completedTargetOrder: [],
     visionRange: level.visionRange, memoryLevel: level.initialMemoryLevel, movementHistory: [{ x: 1, y: 1 }],
     nneCollected: 0, cooCollected: 0, won: false,
+  };
+}
+
+function makeNavigationState({ width = 7, height = 7, start = { x: 1, y: 1 }, walls = [], colors = [], items = [], exit = { x: width - 2, y: height - 2 } } = {}) {
+  const wallKeys = new Set(walls.map(({ x, y }) => `${x},${y}`));
+  const maze = {
+    width, height,
+    tiles: Array.from({ length: height }, (_, y) => Array.from({ length: width }, (_, x) => x === 0 || y === 0 || x === width - 1 || y === height - 1 || wallKeys.has(`${x},${y}`) ? 'wall' : 'floor')),
+    spawn: { ...start }, exit: { ...exit }, colors: colors.map(color => ({ ...color })), items: items.map(item => ({ ...item })),
+  };
+  const state = createRunState(LEVELS[0], maze);
+  state.movementHistory = [{ ...start }];
+  return state;
+}
+
+function makeNavigationSnapshot(state, {
+  visibleCells = new Set(), memoryPathCells = new Set(), memoryWallCells = new Set(),
+  colorMemoryTargets = new Set(), allowMemoryNavigation = false,
+} = {}) {
+  return {
+    state, start: { ...state.player },
+    vision: { visibleCells }, visibleCells, memoryPathCells, memoryWallCells,
+    colorMemoryTargets, allowMemoryNavigation,
+  };
+}
+
+function makeFakeScheduler() {
+  let nextId = 1;
+  const jobs = new Map();
+  return {
+    jobs,
+    schedule(callback, delay) { const id = nextId++; jobs.set(id, { callback, delay }); return id; },
+    unschedule(id) { jobs.delete(id); },
+    runNext() {
+      const first = jobs.entries().next().value;
+      if (!first) return false;
+      const [id, job] = first;
+      jobs.delete(id);
+      job.callback();
+      return job.delay;
+    },
   };
 }
 
@@ -776,17 +820,6 @@ test('only the bottom direction pad buttons are bound as click controls', () => 
   }
 });
 
-test('maze cell movement accepts only the four cardinally adjacent cells', () => {
-  const player = { x: 5, y: 6 };
-  for (const [cell, direction] of [
-    [{ x: 5, y: 5 }, 'up'], [{ x: 5, y: 7 }, 'down'],
-    [{ x: 4, y: 6 }, 'left'], [{ x: 6, y: 6 }, 'right'],
-  ]) assert.equal(directionForAdjacentCell(player, cell), direction);
-  for (const cell of [{ x: 5, y: 6 }, { x: 4, y: 5 }, { x: 6, y: 7 }, { x: 3, y: 6 }, { x: 5, y: 9 }]) {
-    assert.equal(directionForAdjacentCell(player, cell), null);
-  }
-});
-
 test('board points map to cells using the responsive rendered cell size and border', () => {
   const board = {
     clientLeft: 2, clientTop: 2, clientWidth: 400, clientHeight: 240,
@@ -798,15 +831,14 @@ test('board points map to cells using the responsive rendered cell size and bord
   assert.equal(cellFromBoardPoint(board, 10, 6, 100 + 2 + 400, 220), null, 'points outside the rendered board are rejected');
 });
 
-test('one board click sends one adjacent direction through the shared move callback', () => {
-  const listeners = new Map(), moves = [];
+test('one board click reports its responsive cell coordinate once for BFS navigation', () => {
+  const listeners = new Map(), targets = [];
   const board = {
     clientLeft: 2, clientTop: 2, clientWidth: 250, clientHeight: 250,
     getBoundingClientRect: () => ({ left: 100, top: 200, width: 254, height: 254 }),
     contains: cell => cell?.className === 'cell',
     addEventListener: (type, listener) => listeners.set(type, listener),
   };
-  let player = { x: 2, y: 2 };
   const clickCell = (x, y) => {
     const cell = { className: 'cell', dataset: { x: String(x), y: String(y) }, closest: selector => selector === '.cell' ? cell : null };
     listeners.get('click')({
@@ -815,14 +847,200 @@ test('one board click sends one adjacent direction through the shared move callb
       clientY: 200 + 2 + y * 50 + 25,
     });
   };
-  bindBoardInput(board, () => ({ width: 5, height: 5, player }), direction => moves.push(direction));
+  bindBoardInput(board, () => ({ width: 5, height: 5 }), target => targets.push(target));
   assert.deepEqual([...listeners.keys()], ['click'], 'mouse and touch share one click listener with no duplicate pointer/touch listeners');
   clickCell(2, 1); clickCell(2, 3); clickCell(1, 2); clickCell(3, 2);
-  assert.deepEqual(moves, ['up', 'down', 'left', 'right']);
-  for (const [x, y] of [[2, 2], [1, 1], [3, 3], [0, 2], [2, 4]]) clickCell(x, y);
-  assert.deepEqual(moves, ['up', 'down', 'left', 'right'], 'self, diagonal and nonadjacent cells do not send movement');
-  clickCell(2, 1); // A click on an unknown cell is still attempted; walkability is left to movePlayer/takeTurn.
-  assert.equal(moves.at(-1), 'up');
+  clickCell(4, 4); // Distance, visibility and walkability are resolved by the live BFS snapshot.
+  assert.deepEqual(targets, [{ x: 2, y: 1 }, { x: 2, y: 3 }, { x: 1, y: 2 }, { x: 3, y: 2 }, { x: 4, y: 4 }]);
+});
+
+test('board clicks use the actual hit-tested cell if synthesized pointer coordinates drift', () => {
+  const listeners = new Map(), targets = [];
+  const cell = { className: 'cell', dataset: { x: '3', y: '2' }, closest: selector => selector === '.cell' ? cell : null };
+  const board = {
+    clientLeft: 2, clientTop: 2, clientWidth: 250, clientHeight: 250,
+    getBoundingClientRect: () => ({ left: 100, top: 200, width: 254, height: 254 }),
+    contains: target => target === cell,
+    addEventListener: (type, listener) => listeners.set(type, listener),
+  };
+  bindBoardInput(board, () => ({ width: 5, height: 5 }), target => targets.push(target));
+  listeners.get('click')({ target: cell, clientX: 0, clientY: 0 });
+  assert.deepEqual(targets, [{ x: 3, y: 2 }], 'a genuine cell hit is not discarded when synthetic pointer coordinates are unavailable or shifted');
+});
+
+test('click BFS uses the shortest four-way route in visible walkable cells and cannot use an unknown shortcut', () => {
+  const state = makeNavigationState({ width: 5, height: 4 });
+  const visibleCells = new Set(['1,1', '1,2', '2,2', '3,2', '3,1']);
+  const snapshot = makeNavigationSnapshot(state, { visibleCells });
+  const path = findClickMovePath(snapshot, { x: 3, y: 1 });
+  assert.deepEqual(path, ['down', 'right', 'right', 'up']);
+  assert.equal(path.length, 4, 'the unseen direct corridor is excluded, while BFS returns the shortest known route');
+  assert.ok(path.every(direction => ['up', 'down', 'left', 'right'].includes(direction)), 'routes never use diagonals');
+  assert.equal(findClickMovePath(snapshot, { x: 2, y: 1 }), null, 'unknown cells are not valid destinations when memory navigation is disabled');
+});
+
+test('Stage 1 click navigation executes a reachable visible route through normal turns', () => {
+  const level = prepareStage(GAME_STAGES.find(stage => stage.stageId === 1));
+  const maze = cloneMaze(level.mazeTemplate);
+  const state = createRunState(level, maze);
+  const snapshot = createClickNavigationSnapshot(state, false);
+  const noSpecialAt = (x, y) => !maze.colors.some(cell => cell.x === x && cell.y === y && !cell.completed)
+    && !maze.items.some(cell => cell.x === x && cell.y === y)
+    && !(maze.exit.x === x && maze.exit.y === y);
+  const target = [...getClickMoveReachableCells(snapshot)]
+    .map(key => ({ x: Number(key.split(',')[0]), y: Number(key.split(',')[1]) }))
+    .find(point => point.x >= 0 && point.y >= 0 && noSpecialAt(point.x, point.y)
+      && findClickMovePath(snapshot, point)?.length > 1);
+  assert.ok(target, 'Stage 1 exposes a visible walkable destination farther than one move');
+  const path = findClickMovePath(snapshot, target);
+  const timers = makeFakeScheduler();
+  const controller = new ClickMoveController({ interval: CLICK_MOVE_STEP_INTERVAL, schedule: timers.schedule, unschedule: timers.unschedule });
+  controller.start(path, target, {
+    canStep: direction => canMovePlayerInDirection(state, direction).allowed,
+    step: direction => takeTurn(state, direction),
+  });
+  assert.equal(state.steps, 1, 'the first movement happens synchronously instead of waiting for the interval');
+  while (timers.jobs.size && state.steps < path.length + 1) timers.runNext();
+  assert.deepEqual(state.player, target);
+  assert.equal(state.steps, path.length, 'every controller step goes through the standard turn system');
+  assert.equal(controller.active, false);
+});
+
+test('short, medium and long click paths move immediately then use only one configured interval per remaining step', () => {
+  for (const length of [1, 5, 12]) {
+    const timers = makeFakeScheduler();
+    const controller = new ClickMoveController({ interval: CLICK_MOVE_STEP_INTERVAL, schedule: timers.schedule, unschedule: timers.unschedule });
+    let elapsed = 0;
+    const movementTimes = [];
+    controller.start(Array.from({ length }, () => 'right'), { x: length, y: 0 }, {
+      canStep: () => true,
+      step: () => { movementTimes.push(elapsed); return { moved: true }; },
+    });
+
+    assert.equal(movementTimes.length, 1, `${length}-step path performs its first step in the click task`);
+    while (timers.jobs.size) {
+      elapsed += timers.jobs.values().next().value.delay;
+      timers.runNext();
+    }
+    assert.deepEqual(movementTimes, Array.from({ length }, (_, index) => index * CLICK_MOVE_STEP_INTERVAL));
+    assert.equal(elapsed, Math.max(0, length - 1) * CLICK_MOVE_STEP_INTERVAL);
+  }
+});
+
+test('click BFS excludes walls and wrong colors but accepts the active color, NNE, COO and an enterable exit', () => {
+  const allNear = new Set(['1,1', '1,2', '2,1', '2,2', '3,1', '3,2']);
+  const wallState = makeNavigationState({ width: 5, height: 5, walls: [{ x: 2, y: 1 }] });
+  const wallPath = findClickMovePath(makeNavigationSnapshot(wallState, { visibleCells: allNear }), { x: 3, y: 1 });
+  assert.deepEqual(wallPath, ['down', 'right', 'right', 'up'], 'the route goes around a known wall');
+
+  const wrongColor = makeNavigationState({ width: 5, height: 5, colors: [{ x: 2, y: 1, kind: 'color', id: 'orange_1', color: 'orange', completed: false }] });
+  assert.equal(findClickMovePath(makeNavigationSnapshot(wrongColor, { visibleCells: allNear }), { x: 2, y: 1 }), null);
+  wrongColor.maze.colors[0] = { x: 2, y: 1, kind: 'color', id: 'red_1', color: 'red', completed: false };
+  assert.deepEqual(findClickMovePath(makeNavigationSnapshot(wrongColor, { visibleCells: allNear }), { x: 2, y: 1 }), ['right']);
+
+  for (const kind of ['nne', 'coo']) {
+    const itemState = makeNavigationState({ width: 5, height: 5, items: [{ x: 2, y: 1, kind, id: `${kind}_1` }] });
+    assert.deepEqual(findClickMovePath(makeNavigationSnapshot(itemState, { visibleCells: allNear }), { x: 2, y: 1 }), ['right']);
+    const specialSnapshot = createClickNavigationSnapshot(itemState);
+    assert.deepEqual(findClickMovePath(specialSnapshot, { x: 2, y: 1 }), ['right'], 'a permanently shown special object may be a terminal target outside Vision');
+    specialSnapshot.visibleCells = new Set(['1,1']);
+    assert.equal(findClickMovePath(specialSnapshot, { x: 3, y: 1 }), null, 'the special target does not make an unknown corridor navigable');
+  }
+  const exitState = makeNavigationState({ width: 5, height: 5, exit: { x: 2, y: 1 } });
+  exitState.fullVisionMode = true;
+  exitState.sequenceProgress = getColorConfig(exitState.level).colorSequence.length;
+  assert.deepEqual(findClickMovePath(createClickNavigationSnapshot(exitState), { x: 2, y: 1 }), ['right']);
+});
+
+test('memory click navigation defaults off and, when enabled, uses only path memory and remembered color endpoints', () => {
+  assert.equal(ALLOW_MEMORY_CLICK_MOVE, false);
+  const state = makeNavigationState({ width: 7, height: 7 });
+  state.visionRange = 1;
+  state.movementHistory = [{ x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 1 }];
+  const disabledSnapshot = createClickNavigationSnapshot(state);
+  assert.ok(disabledSnapshot.memoryPathCells.has('3,1'));
+  assert.equal(findClickMovePath(disabledSnapshot, { x: 3, y: 1 }), null, 'a white memory dot is not navigable by default');
+  assert.equal(getClickMoveReachableCells(disabledSnapshot).has('3,1'), false);
+  const enabledSnapshot = createClickNavigationSnapshot(state, true);
+  assert.deepEqual(findClickMovePath(enabledSnapshot, { x: 3, y: 1 }), ['right', 'right']);
+  const blockedMemory = makeNavigationSnapshot(state, {
+    visibleCells: new Set(['1,1', '2,1']), memoryPathCells: new Set(['3,1']), memoryWallCells: new Set(['2,1']), allowMemoryNavigation: true,
+  });
+  assert.equal(findClickMovePath(blockedMemory, { x: 3, y: 1 }), null, 'remembered red crosses are excluded');
+
+  const color = { x: 3, y: 1, kind: 'color', id: 'red_memory', color: 'red', completed: false };
+  const rememberedState = makeNavigationState({ width: 7, height: 7, colors: [color] });
+  rememberedState.colorMemory = new Map([[color.id, 4]]);
+  const rememberedPath = makeNavigationSnapshot(rememberedState, {
+    visibleCells: new Set(['1,1', '2,1']), memoryPathCells: new Set(),
+    colorMemoryTargets: new Set(['3,1']), allowMemoryNavigation: true,
+  });
+  assert.deepEqual(findClickMovePath(rememberedPath, { x: 3, y: 1 }), ['right', 'right'], 'a remembered current target is allowed as a terminal destination');
+  assert.equal(getClickMoveReachableCells(rememberedPath).has('3,1'), true);
+  const disconnectedMemory = makeNavigationSnapshot(rememberedState, {
+    visibleCells: new Set(['1,1']), memoryPathCells: new Set(['2,3']),
+    colorMemoryTargets: new Set(['3,1']), allowMemoryNavigation: true,
+  });
+  assert.equal(findClickMovePath(disconnectedMemory, { x: 3, y: 1 }), null, 'color memory never borrows an unknown route');
+  rememberedState.maze.colors[0] = { ...color, id: 'purple_memory', color: 'purple' };
+  const wrongRememberedColor = makeNavigationSnapshot(rememberedState, {
+    visibleCells: new Set(['1,1', '2,1']), colorMemoryTargets: new Set(['3,1']), allowMemoryNavigation: true,
+  });
+  assert.equal(findClickMovePath(wrongRememberedColor, { x: 3, y: 1 }), null, 'Color Memory does not override the color sequence gate');
+});
+
+test('latest click cancels stale routes and recomputes from the player current position', () => {
+  const state = makeNavigationState({ width: 8, height: 3, start: { x: 1, y: 1 }, exit: { x: 6, y: 1 } });
+  state.visionRange = 8;
+  state.movementHistory = [];
+  const timers = makeFakeScheduler();
+  const controller = new ClickMoveController({ interval: CLICK_MOVE_STEP_INTERVAL, schedule: timers.schedule, unschedule: timers.unschedule });
+  const navigateTo = target => {
+    const snapshot = createClickNavigationSnapshot(state, false);
+    const path = findClickMovePath(snapshot, target);
+    controller.start(path, target, {
+      canStep: direction => canMovePlayerInDirection(state, direction).allowed,
+      step: direction => takeTurn(state, direction),
+    });
+    return path;
+  };
+  assert.deepEqual(navigateTo({ x: 6, y: 1 }), ['right', 'right', 'right', 'right', 'right']);
+  assert.deepEqual(state.player, { x: 2, y: 1 }, 'the first step runs immediately');
+  timers.runNext();
+  assert.deepEqual(state.player, { x: 3, y: 1 });
+  assert.deepEqual(navigateTo({ x: 4, y: 1 }), ['right'], 'a new target is calculated from the current player position');
+  assert.deepEqual(state.player, { x: 4, y: 1 }, 'a replacement one-step path also starts immediately');
+  assert.equal(timers.jobs.size, 0, 'the completed replacement path has no leftover timer');
+  assert.equal(state.steps, 3);
+  assert.equal(state.movementHistory.length, 3, 'each automatic step uses the standard turn and history logic');
+  assert.equal(controller.active, false);
+  assert.equal(timers.jobs.size, 0, 'the cancelled route cannot resume later');
+});
+
+test('rapid target changes keep only the last route; manual/reset cancellation clears pending ticks', () => {
+  const timers = makeFakeScheduler(), moves = [];
+  const controller = new ClickMoveController({ interval: 120, schedule: timers.schedule, unschedule: timers.unschedule });
+  const run = (name, path) => controller.start(path, { x: 0, y: 0 }, {
+    canStep: () => true,
+    step: direction => { moves.push(`${name}:${direction}`); return { moved: true }; },
+  });
+  run('A', ['right', 'right']);
+  assert.deepEqual(moves, ['A:right'], 'route A starts on the click');
+  run('B', ['down', 'down']);
+  run('C', ['left']);
+  assert.deepEqual(moves, ['A:right', 'B:down', 'C:left'], 'each new click immediately takes over and discards the old remainder');
+  assert.equal(timers.jobs.size, 0, 'the final one-step route leaves no timer behind');
+  assert.equal(controller.active, false);
+
+  run('reset', ['up', 'up']);
+  assert.equal(timers.jobs.size, 1, 'only the uncompleted second step has a timer');
+  controller.cancel(); // Same cancellation entry point is called for manual input, RESET, and Stage Change.
+  assert.equal(timers.jobs.size, 0);
+  assert.equal(controller.active, false);
+  assert.equal(controller.target, null);
+  assert.deepEqual(controller.path, []);
+  assert.equal(timers.runNext(), false);
+  assert.deepEqual(moves, ['A:right', 'B:down', 'C:left', 'reset:up']);
 });
 
 test('Auto Solve can execute all 100 gated Stage solutions through the exit', () => {

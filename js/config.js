@@ -1,5 +1,9 @@
 export const DEBUG = false;
+export const DEBUG_INPUT_PERFORMANCE = false;
 export const GAME_CONFIG = Object.freeze({ memoryStepMultiplier: 4 });
+export const ALLOW_MEMORY_CLICK_MOVE = false;
+export const CLICK_MOVE_STEP_INTERVAL = 200;
+export const PLAYER_MOVE_TRANSITION_MS = 160;
 
 export const COLOR_LIBRARY = Object.freeze({
   red: { label: '紅', symbol: '🔴', color: '#ff637d' },

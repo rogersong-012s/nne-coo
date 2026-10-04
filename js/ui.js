@@ -1,20 +1,23 @@
-import { COLOR_LIBRARY } from './config.js';
-import { cellVisibility, getEffectiveMemorySteps, getEffectiveVisionCells, getMemoryMarkers, isFeatureVisible, positionKey, recentHistory } from './memory.js';
+import { ALLOW_MEMORY_CLICK_MOVE, COLOR_LIBRARY, DEBUG_INPUT_PERFORMANCE, PLAYER_MOVE_TRANSITION_MS } from './config.js';
+import { createClickNavigationSnapshot, getClickMoveReachableCells } from './click-navigation.js';
+import { cellVisibility, getEffectiveMemorySteps, isFeatureVisible, positionKey, recentHistory } from './memory.js';
 import { currentRound, nextColor } from './objectives.js';
 import { STAGES, getColorConfig } from './levels.js';
 import { currentTutorialStep, TUTORIAL_STEPS } from './tutorial.js';
 
 const $ = id => document.getElementById(id);
 const refs = {
-  board: $('board'), host: $('board-host'), order: $('order'), toast: $('toast'), win: $('win'), debug: $('debug-panel'), notice: null,
+  board: $('board'), host: $('board-host'), order: $('order'), toast: $('toast'), win: $('win'), debug: $('debug-panel'), notice: null, player: null,
   tutorial: $('tutorial-overlay'), tutorialCard: $('tutorial-card'), tutorialSvg: $('tutorial-spotlight'), tutorialMask: $('tutorial-spotlight-mask'),
   tutorialMaskBase: $('tutorial-mask-base'), tutorialCutouts: $('tutorial-cutouts'), tutorialDim: $('tutorial-dim'), tutorialOutlines: $('tutorial-outlines'),
 };
 let toastTimer, powerupNoticeTimer = null, powerupNoticeGeneration = 0;
 const reportedBackgroundFailures = new Set();
 let displayedTutorialStep = null;
+let fittedCellSize = 25;
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
+const now = () => globalThis.performance?.now?.() ?? Date.now();
 
 function tutorialTargetElements(step) {
   const selectors = [step?.target, step?.fallback].flatMap(value => Array.isArray(value) ? value : [value]).filter(Boolean);
@@ -104,11 +107,28 @@ export function fitBoard(state) {
   const availableWidth = Math.max(1, rect.width - border);
   const availableHeight = Math.max(1, rect.height - border);
   const size = Math.max(1, Math.floor(Math.min(availableWidth / state.maze.width, availableHeight / state.maze.height)));
+  fittedCellSize = size;
   const boardWidth = size * state.maze.width + border;
   const boardHeight = size * state.maze.height + border;
   refs.board.style.width = `${boardWidth}px`;
   refs.board.style.height = `${boardHeight}px`;
   refs.board.style.setProperty('--cell', `${size}px`);
+  refs.board.style.setProperty('--player-move-transition', `${PLAYER_MOVE_TRANSITION_MS}ms`);
+  refs.player?.classList.add('position-reset');
+  updatePlayerMarkerPosition(state);
+  if (refs.player) requestAnimationFrame(() => refs.player?.classList.remove('position-reset'));
+}
+
+function updatePlayerMarkerPosition(state) {
+  if (!refs.player) return;
+  refs.player.style.transform = `translate3d(${state.player.x * fittedCellSize}px, ${state.player.y * fittedCellSize}px, 0)`;
+}
+
+export function updateClickMoveMarker(target) {
+  refs.board.querySelector('.click-move-destination')?.classList.remove('click-move-destination');
+  if (!target) return;
+  refs.board.querySelector(`.cell[data-x="${target.x}"][data-y="${target.y}"]`)
+    ?.classList.add('click-move-destination');
 }
 
 function createBackgroundLayer(state) {
@@ -190,6 +210,12 @@ export function buildBoard(state) {
     const debug = document.createElement('small'); debug.className = 'cell-debug'; debug.setAttribute('aria-hidden', 'true');
     cell.append(content, memoryMarker, debug); refs.board.append(cell);
   }
+  const player = document.createElement('span');
+  player.className = 'player-token';
+  player.setAttribute('aria-hidden', 'true');
+  player.textContent = '●';
+  refs.player = player;
+  refs.board.append(player);
   const notice = document.createElement('div');
   notice.className = 'powerup-notice';
   notice.setAttribute('role', 'status');
@@ -290,10 +316,11 @@ export function render(state) {
     : `${state.sequenceProgress} / ${colorSequence.length} · 第 ${round} 輪 · 目標：${COLOR_LIBRARY[targetColor]?.label ?? targetColor}`;
 
   renderBackground(state);
-  const vision = getEffectiveVisionCells(state.maze, state.player, state.visionRange, state.fullVisionMode);
-  const { memoryPathCells, memoryWallCells } = state.fullVisionMode
-    ? { memoryPathCells: new Set(), memoryWallCells: new Set() }
-    : getMemoryMarkers(state.maze, state.movementHistory, effectiveMemorySteps, vision.visibleCells);
+  const navigation = createClickNavigationSnapshot(state, ALLOW_MEMORY_CLICK_MOVE);
+  const { vision, memoryPathCells, memoryWallCells } = navigation;
+  const reachableStartedAt = DEBUG_INPUT_PERFORMANCE ? now() : null;
+  const clickMoveReachableCells = getClickMoveReachableCells(navigation);
+  if (DEBUG_INPUT_PERFORMANCE) console.info(`[Click Perf] render reachability BFS ${(now() - reachableStartedAt).toFixed(2)}ms`);
   const positions = new Map();
   for (const color of state.maze.colors) positions.set(positionKey(color), color);
   for (const item of state.maze.items) positions.set(positionKey(item), item);
@@ -312,7 +339,7 @@ export function render(state) {
     const showMemoryPath = !visible && memoryPathCells.has(key);
     const showMemoryWall = !visible && memoryWallCells.has(key);
     cell.className = `cell ${terrain ? `revealed ${terrain}` : 'unknown'}`;
-    if (Math.abs(x - state.player.x) + Math.abs(y - state.player.y) === 1) cell.classList.add('adjacent-player-cell');
+    if (state.clickMoveTarget?.x === x && state.clickMoveTarget?.y === y) cell.classList.add('click-move-destination');
     if (visible) cell.classList.add('vision-current');
     if (state.debug) cell.classList.add('debug-map');
     if (showMemoryPath) cell.classList.add('memory-path-marker');
@@ -333,11 +360,17 @@ export function render(state) {
         cell.classList.add('exit', state.sequenceProgress === colorSequence.length ? 'unlocked' : 'locked'); content.textContent = '▣';
       } else { cell.classList.add(feature.kind); content.textContent = feature.kind === 'nne' ? '✦' : '✧'; }
     }
-    if (x === state.player.x && y === state.player.y) { cell.classList.add('player'); content.textContent = '●'; }
+    if (clickMoveReachableCells.has(key)) {
+      if (vision.visibleCells.has(key) || ['exit', 'nne', 'coo'].includes(feature?.kind)) cell.classList.add('click-move-available');
+      else if (ALLOW_MEMORY_CLICK_MOVE) cell.classList.add('memory-click-move-available');
+    }
+    const isPlayer = x === state.player.x && y === state.player.y;
+    if (isPlayer) { cell.classList.add('player'); content.textContent = ''; }
     debugTag.textContent = state.debug ? key : '';
     const markerLabel = showMemoryPath && showMemoryWall ? '記憶位置 記憶牆' : showMemoryPath ? '記憶位置' : showMemoryWall ? '記憶牆' : '';
-    cell.setAttribute('aria-label', `${key} ${terrain ?? '未知地形'} ${feature?.kind ?? ''} ${markerLabel}`.trim());
+    cell.setAttribute('aria-label', `${key} ${terrain ?? '未知地形'} ${feature?.kind ?? ''} ${isPlayer ? '玩家' : ''} ${markerLabel}`.trim());
   }
+  updatePlayerMarkerPosition(state);
   refs.debug.hidden = !state.debug;
   if (state.debug) refs.debug.textContent = debugText(state, vision, memoryPathCells, memoryWallCells, effectiveMemorySteps);
 }
