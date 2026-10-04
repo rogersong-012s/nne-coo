@@ -13,19 +13,21 @@ const TUTORIAL_LAYOUT = Object.freeze([
 ]);
 
 const toTarget = (x, y, color) => ({ x, y, kind: 'color', id: `${color}_1`, color, completed: false });
-const colors = [toTarget(3, 1, 'red'), toTarget(5, 1, 'orange'), toTarget(7, 1, 'yellow')];
+const colors = [toTarget(3, 5, 'red'), toTarget(5, 1, 'orange'), toTarget(7, 1, 'yellow')];
 const items = [
   { x: 3, y: 3, kind: 'nne', id: 'nne_1' },
   { x: 7, y: 3, kind: 'coo', id: 'coo_1' },
 ];
 const solutionPath = [
+  'down', 'down', 'down', 'down',
   'right', 'right',
-  'down', 'down',
-  'right', 'right', 'right', 'right',
-  'left', 'left',
   'up', 'up',
   'right', 'right', 'right', 'right',
-  'down', 'down', 'down', 'down', 'down', 'down', 'down', 'down',
+  'left', 'left', 'up', 'up',
+  'right', 'right',
+  'left', 'left', 'left', 'left',
+  'down', 'down', 'down', 'down',
+  'left', 'left', 'up', 'up',
 ];
 
 const wallLayout = [...TUTORIAL_LAYOUT];
@@ -34,7 +36,7 @@ const mazeTemplate = {
   height: 11,
   tiles: TUTORIAL_LAYOUT.map(row => [...row].map(cell => cell === '#' ? 'wall' : 'floor')),
   spawn: { x: 1, y: 1 },
-  exit: { x: 9, y: 9 },
+  exit: { x: 1, y: 3 },
   colors: colors.map(target => ({ ...target })),
   items: items.map(item => ({ ...item })),
   solutionPath: [...solutionPath],
@@ -49,9 +51,9 @@ const mazeTemplate = {
 export const TUTORIAL_STAGE = {
   id: 'stage-0', stageId: 0, number: 0, name: 'Stage 0 · 教學', sizeTier: 0, difficulty: 0, seed: 0,
   mazeWidth: 11, mazeHeight: 11,
-  start: { x: 1, y: 1 }, exit: { x: 9, y: 9 },
+  start: { x: 1, y: 1 }, exit: { x: 1, y: 3 },
   wallLayout,
-  colorTargets: { red: [{ x: 3, y: 1, id: 'red_1', color: 'red', completed: false }], orange: [{ x: 5, y: 1, id: 'orange_1', color: 'orange', completed: false }], yellow: [{ x: 7, y: 1, id: 'yellow_1', color: 'yellow', completed: false }] },
+  colorTargets: { red: [{ x: 3, y: 5, id: 'red_1', color: 'red', completed: false }], orange: [{ x: 5, y: 1, id: 'orange_1', color: 'orange', completed: false }], yellow: [{ x: 7, y: 1, id: 'yellow_1', color: 'yellow', completed: false }] },
   items: { nne: [items[0]], coo: [items[1]] },
   visionRange: 2, initialMemoryLevel: 3,
   itemEffects: { nneVisionBonus: 1, cooMemoryBonus: 2 },

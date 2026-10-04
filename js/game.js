@@ -68,12 +68,15 @@ function executeMove(direction, clickPerformance = null) {
   const moveStartedAt = clickPerformance && !clickPerformance.firstMoveLogged ? now() : null;
   const wasFullVisionMode = state.fullVisionMode;
   const tutorialStep = currentTutorialStep(state.tutorial);
+  const previousPlayer = { ...state.player };
   const turn = takeTurn(state, direction);
   if (!turn.moved) {
     if (turn.reason === 'color-locked') showToast('順序未到，暫時無法通行');
     return turn;
   }
-  if (tutorialActionCompleted(tutorialStep, turn, state.maze)) advanceTutorial(state.tutorial, true);
+  if (tutorialActionCompleted(tutorialStep, turn, state.maze, state.tutorial, previousPlayer, state.player)) {
+    advanceTutorial(state.tutorial, true);
+  }
   if (state.tutorial?.active && !canMoveDuringTutorial(state.tutorial)) cancelClickMove();
   const renderStartedAt = moveStartedAt === null ? null : now();
   render(state);
@@ -94,12 +97,12 @@ function executeMove(direction, clickPerformance = null) {
   if (!wasFullVisionMode && state.fullVisionMode) playFullVisionTransition();
   if (turn.item === 'nne') showPowerupNotice('NNE GET!', 'EYE +1', 'nne');
   else if (turn.item === 'coo') showPowerupNotice('COO GET!', 'MEM +2', 'coo');
-  else if (turn.colorResult?.type === 'complete') showToast('12 顆完成 · 全視野開啟 · 前往出口', 'success');
+  else if (turn.colorResult?.type === 'complete') showToast(state.level.isTutorial ? '短版彩序完成 · 全視野開啟 · 前往出口' : '12 顆完成 · 全視野開啟 · 前往出口', 'success');
   else if (turn.colorResult?.type === 'round-complete') {
     const { colorRounds } = getColorConfig(state.level);
     showToast(`第 ${turn.colorResult.completedRound} 輪完成${turn.colorResult.completedRound < colorRounds ? `！第 ${turn.colorResult.completedRound + 1} 輪：再次尋找紅色` : ''}`, 'success');
   } else if (turn.colorResult?.type === 'correct') showToast('順序正確！', 'success');
-  else if (turn.exitLocked) showToast('尚未完成彩序 · 出口鎖定', 'mistake');
+  else if (turn.exitLocked && !state.level.isTutorial) showToast('尚未完成彩序 · 出口鎖定', 'mistake');
 
   if (state.won) {
     cancelClickMove();

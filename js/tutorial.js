@@ -1,100 +1,38 @@
 import { DIRECTION } from './config.js';
 
+const INFO = (id, target, title, body, extra = {}) => ({ id, actionType: 'info', target, title, body, ...extra });
+const ACTION = (id, action, target, title, body, extra = {}) => ({ id, actionType: 'action', action, target, title, body, ...extra });
+
 export const TUTORIAL_STEPS = Object.freeze([
-  {
-    id: 'welcome', actionType: 'info', target: null,
-    title: '歡迎來到彩序迷宮',
-    body: '正式關卡要依序收集紅、橙、黃、綠、藍、紫，完成兩輪共 12 顆後前往出口。本教學會用短版流程帶你實際走一次。',
-  },
-  {
-    id: 'maze', actionType: 'info', target: '#board', placement: 'top',
-    title: '這是迷宮',
-    body: '在這裡探索、找顏色並收集道具。地形會受到目前視野與記憶影響。',
-  },
-  {
-    id: 'player', actionType: 'info', target: '.cell.player', fallback: '#board', placement: 'top',
-    title: '這是你的位置',
-    body: '● 是玩家角色。可使用 WASD、方向鍵或下方方向控制一步步移動，也能點擊視野中可達格，讓玩家沿最短路徑前往。',
-  },
-  {
-    id: 'stats', actionType: 'info', target: '[data-tutorial-target="stats"]',
-    title: 'STEP / EYE / MEM',
-    body: 'STEP 是移動步數；EYE 是視野範圍；MEM 是記憶能力值。實際記憶距離為 MEM × 4 步。',
-  },
-  {
-    id: 'sequence', actionType: 'info', target: '#order-panel',
-    title: '彩序很重要',
-    body: '正式關卡依序收集紅 → 橙 → 黃 → 綠 → 藍 → 紫，完整做兩輪，共 12 顆。',
-  },
-  {
-    id: 'exit', actionType: 'info', target: '.cell.exit', fallback: '#board', placement: 'top',
-    title: '出口會在最後解鎖',
-    body: '出口一開始就會顯示。正式關卡完成 12 顆目標後才能通關。',
-  },
-  {
-    id: 'move-one', actionType: 'action', action: { type: 'move' }, target: '.controls button, #board', placement: 'top',
-    title: '試著移動一步',
-    body: '往任意可通行方向成功移動一格，完成後教學會自動繼續。',
-  },
-  {
-    id: 'vision', actionType: 'info', target: '.cell.vision-current', fallback: '#board', placement: 'top',
-    title: '視野有限而且會被牆擋住',
-    body: '你只能看見有限範圍。EYE 越高，看得越遠；視線沿直線延伸，撞到牆就停止。',
-  },
-  {
-    id: 'memory', actionType: 'info', target: '.cell.memory-path-marker, .cell.memory-wall-marker', fallback: '#memory',
-    title: '記憶不等於完整地圖',
-    body: '白點表示最近走過的位置；紅叉表示記得那裡是牆。離開視野後，普通地形不會一直完整顯示。',
-  },
-  {
-    id: 'collect-red', actionType: 'action', action: { type: 'collect-color', color: 'red' }, target: '.cell.color-red', fallback: '#order-panel', placement: 'top',
-    title: '第一個目標是紅色',
-    body: '現在只能進入紅色目標。其他尚未輪到的顏色會像障礙物一樣擋路。',
-  },
-  {
-    id: 'wrong-color', actionType: 'info', target: '.cell.color-yellow', fallback: '#order-panel', placement: 'top',
-    title: '錯誤顏色目前不可通行',
-    body: '黃色還沒輪到，所以現在不能進入。等彩序輪到黃色後，它才會開放通行。',
-  },
-  {
-    id: 'collect-nne', actionType: 'action', action: { type: 'collect-item', kind: 'nne' }, target: '.cell.nne', fallback: '#board', placement: 'top',
-    title: '收集 NNE',
-    body: '移動到青色 ✦ NNE。每取得一個 NNE，EYE +1，視野會增加。',
-  },
-  {
-    id: 'collect-coo', actionType: 'action', action: { type: 'collect-item', kind: 'coo' }, target: '.cell.coo', fallback: '#board', placement: 'top',
-    title: '收集 COO',
-    body: '移動到紫色 ✧ COO。每取得一個 COO，MEM +2，路線與顏色記憶都會延長。',
-  },
-  {
-    id: 'background', actionType: 'info', target: '.board-background', fallback: '#board', placement: 'top',
-    title: '背景圖片會逐步揭露',
-    body: '每完成一顆彩色目標，就會揭露一部分背景圖片。正式關卡完成全部 12 顆後，圖片會完整顯示。',
-  },
-  {
-    id: 'full-reveal', actionType: 'info', target: '#order-panel, .cell.exit, .board-background', fallback: '#board', placement: 'top',
-    title: '完成彩序後前往出口',
-    body: '正式關卡完成 12 顆後會開啟 Full Vision、揭露完整圖片並解鎖出口。Stage 0 是短版示範，完成紅、橙、黃三顆後也會進入此狀態。',
-  },
-  {
-    id: 'collect-orange', actionType: 'action', action: { type: 'collect-color', color: 'orange' }, target: '.cell.color-orange', fallback: '#order-panel', placement: 'top',
-    title: '現在輪到橙色',
-    body: '沿迷宮走到橙色菱形。只有目前輪到的顏色能被收集。',
-  },
-  {
-    id: 'collect-yellow', actionType: 'action', action: { type: 'collect-color', color: 'yellow' }, target: '.cell.color-yellow', fallback: '#order-panel', placement: 'top',
-    title: '接著收集黃色',
-    body: '再找到黃色菱形。Stage 0 以紅、橙、黃示範短版彩序。',
-  },
-  {
-    id: 'reach-exit', actionType: 'action', action: { type: 'reach-exit' }, target: '.cell.exit', fallback: '#board', placement: 'top',
-    title: '走到出口完成教學',
-    body: '短版彩序完成了。走到已解鎖的出口，完成 Stage 0。',
-  },
-]);
+  INFO('welcome', null, '歡迎來到彩序迷宮', '正式關卡要依序收集紅、橙、黃、綠、藍、紫，完成兩輪共 12 顆後前往出口。本教學會用短版流程帶你實際走一次。', { maskMode: 'full' }),
+  INFO('maze', '#board', '這是迷宮', '在這裡探索、找顏色並收集道具。地形會受到目前視野與記憶影響。'),
+  INFO('player', '.cell.player', '這是你的位置', '● 是玩家角色。可使用 WASD、方向鍵、下方方向控制，或點擊相鄰可通行格移動。'),
+  INFO('stats', '[data-tutorial-target="stats"]', 'STEP / EYE / MEM', 'STEP 是移動步數；EYE 是視野範圍；MEM 是記憶能力值。實際記憶距離為 MEM × 4 步。'),
+  INFO('sequence', '#order-panel', '彩序很重要', '正式關卡依序收集紅 → 橙 → 黃 → 綠 → 藍 → 紫，完整做兩輪，共 12 顆。'),
+  INFO('exit-intro', '.cell.exit', '出口在這裡', '還沒完成彩序時，出口不會讓你過關。不過別擔心，你仍然可以從這裡通過。', { preferredPositions: ['top', 'bottom', 'right', 'left'] }),
+  ACTION('move-one', { type: 'move', direction: 'down' }, '.cell.player', '朝出口移動一步', '請往下移動一格，接著我們會實際穿過尚未解鎖的出口。'),
+  INFO('vision', '#board', '視野有限而且會被牆擋住', '你只能看見有限範圍。EYE 越高，看得越遠；視線沿直線延伸，撞到牆就停止。'),
+  ACTION('pass-through-exit', { type: 'pass-through-exit' }, '.cell.exit, .cell.player', '試著穿過出口', '先走進出口格，再從另一側走出去。完成彩序前，它只是普通通道，不會讓你過關。', { preferredPositions: ['top', 'bottom', 'right', 'left'] }),
+  INFO('memory', '#memory', '記憶不等於完整地圖', '白點表示最近走過的位置；紅叉表示記得那裡是牆。離開視野後，普通地形不會一直完整顯示。'),
+  ACTION('collect-red', { type: 'collect-color', color: 'red' }, '.cell.color-red', '第一個目標是紅色', '現在只能進入紅色目標。其他尚未輪到的顏色會像障礙物一樣擋路。'),
+  INFO('wrong-color', '.cell.color-yellow', '錯誤顏色目前不可通行', '黃色還沒輪到，所以現在不能進入。等彩序輪到黃色後，它才會開放通行。'),
+  ACTION('collect-nne', { type: 'collect-item', kind: 'nne' }, '.cell.nne', '收集 NNE', '移動到青色 ✦ NNE。每取得一個 NNE，EYE +1，視野會增加。'),
+  ACTION('collect-coo', { type: 'collect-item', kind: 'coo' }, '.cell.coo', '收集 COO', '移動到紫色 ✧ COO。每取得一個 COO，MEM +2，路線與顏色記憶都會延長。'),
+  INFO('background', '#board', '背景圖片會逐步揭露', '每完成一顆彩色目標，就會揭露一部分背景圖片。正式關卡完成全部 12 顆後，圖片會完整顯示。'),
+  ACTION('collect-orange', { type: 'collect-color', color: 'orange' }, '.cell.color-orange', '現在輪到橙色', '沿迷宮走到橙色菱形。只有目前輪到的顏色能被收集。'),
+  ACTION('collect-yellow', { type: 'collect-color', color: 'yellow' }, '.cell.color-yellow', '接著收集黃色', '再找到黃色菱形。Stage 0 以紅、橙、黃示範短版彩序。'),
+  INFO('full-reveal', '.cell.exit', '出口已經解鎖', '完成 Stage 0 的三顆彩色目標後，會開啟 Full Vision 並揭露完整圖片。現在走到出口就能通關。', { preferredPositions: ['top', 'bottom', 'right', 'left'] }),
+  ACTION('reach-exit', { type: 'reach-exit' }, '.cell.exit', '走到出口完成教學', '短版彩序完成了。走到已解鎖的出口，完成 Stage 0。', { preferredPositions: ['top', 'bottom', 'right', 'left'] }),
+].map(step => Object.freeze({
+  maskMode: step.maskMode ?? (step.actionType === 'action' ? 'maze-open' : 'spotlight'),
+  allowGameplayInput: step.actionType === 'action',
+  dialogPlacement: 'auto',
+  preferredPositions: step.preferredPositions ?? (step.actionType === 'action' ? ['top', 'bottom', 'right', 'left'] : ['bottom', 'top', 'right', 'left']),
+  ...step,
+})));
 
 export function createTutorialState() {
-  return { active: true, completed: false, stepIndex: 0 };
+  return { active: true, completed: false, stepIndex: 0, exitPassageEntered: false };
 }
 
 export function currentTutorialStep(tutorialState) {
@@ -102,28 +40,30 @@ export function currentTutorialStep(tutorialState) {
 }
 
 export function canMoveDuringTutorial(tutorialState) {
-  return currentTutorialStep(tutorialState)?.actionType === 'action';
+  return currentTutorialStep(tutorialState)?.allowGameplayInput === true;
 }
 
 export function isTutorialMoveAllowed(tutorialState, maze, player, direction) {
   const step = currentTutorialStep(tutorialState);
-  if (step?.actionType !== 'action') return false;
+  if (!canMoveDuringTutorial(tutorialState)) return false;
   const delta = DIRECTION[direction];
   if (!delta) return false;
+  if (step.action.type === 'move' && step.action.direction && direction !== step.action.direction) return false;
 
   const next = { x: player.x + delta[0], y: player.y + delta[1] };
-  const action = step.action;
   const item = maze.items.find(entry => entry.x === next.x && entry.y === next.y);
-  if (item && !(action.type === 'collect-item' && action.kind === item.kind)) return false;
+  if (item && !(step.action.type === 'collect-item' && step.action.kind === item.kind)) return false;
 
   const target = maze.colors.find(entry => entry.x === next.x && entry.y === next.y && !entry.completed);
-  if (target && !(action.type === 'collect-color' && action.color === target.color)) return false;
+  if (target && !(step.action.type === 'collect-color' && step.action.color === target.color)) return false;
 
   const atExit = next.x === maze.exit.x && next.y === maze.exit.y;
-  return !atExit || action.type === 'reach-exit';
+  // A locked exit is ordinary walkable floor. The tutorial only gates access
+  // until the dedicated passage lesson; normal Stages have no such gate.
+  return !atExit || ['pass-through-exit', 'reach-exit'].includes(step.action.type);
 }
 
-export function tutorialActionCompleted(step, turn, maze) {
+export function tutorialActionCompleted(step, turn, maze, tutorialState, previousPosition, nextPosition) {
   if (step?.actionType !== 'action' || !turn?.moved) return false;
   switch (step.action.type) {
     case 'move': return true;
@@ -133,6 +73,14 @@ export function tutorialActionCompleted(step, turn, maze) {
       return Boolean(target && target.color === step.action.color && ['correct', 'round-complete', 'complete'].includes(result.type));
     }
     case 'collect-item': return turn.item === step.action.kind;
+    case 'pass-through-exit': {
+      const isExit = position => position?.x === maze.exit.x && position?.y === maze.exit.y;
+      if (isExit(nextPosition)) {
+        tutorialState.exitPassageEntered = true;
+        return false;
+      }
+      return tutorialState.exitPassageEntered && isExit(previousPosition);
+    }
     case 'reach-exit': return turn.won === true;
     default: return false;
   }
@@ -141,6 +89,7 @@ export function tutorialActionCompleted(step, turn, maze) {
 export function advanceTutorial(tutorialState, actionCompleted = false) {
   const step = currentTutorialStep(tutorialState);
   if (!step || (step.actionType === 'action') !== actionCompleted) return false;
+  if (step.action?.type === 'pass-through-exit') tutorialState.exitPassageEntered = false;
   tutorialState.stepIndex++;
   if (tutorialState.stepIndex >= TUTORIAL_STEPS.length) {
     tutorialState.active = false;

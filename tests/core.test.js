@@ -12,6 +12,7 @@ import { canMovePlayerInDirection } from '../js/player.js';
 import { bindBoardInput, bindInput, cellFromBoardPoint, directionForKey } from '../js/input.js';
 import { createRunState } from '../js/run-state.js';
 import { advanceTutorial, canMoveDuringTutorial, createTutorialState, currentTutorialStep, isTutorialMoveAllowed, TUTORIAL_STEPS, tutorialActionCompleted } from '../js/tutorial.js';
+import { chooseTutorialDialogPosition } from '../js/tutorial-layout.js';
 
 function makeObjectiveState({ colors = ['red', 'orange', 'yellow'], rounds = 2 } = {}) {
   const baseColorOrder = [...colors];
@@ -184,53 +185,108 @@ test('Stage 0 is a fixed short tutorial and leaves the Stage 1–100 campaign in
 test('tutorial actions gate movement, prevent collecting future items early, and can be completed in game order', () => {
   assert.ok(TUTORIAL_STEPS.some(step => step.actionType === 'info' && step.id === 'stats'));
   assert.ok(TUTORIAL_STEPS.some(step => step.actionType === 'info' && step.id === 'sequence'));
-  for (const actionId of ['move-one', 'collect-red', 'collect-nne', 'collect-coo', 'collect-orange', 'collect-yellow', 'reach-exit']) {
+  for (const actionId of ['move-one', 'pass-through-exit', 'collect-red', 'collect-nne', 'collect-coo', 'collect-orange', 'collect-yellow', 'reach-exit']) {
     assert.ok(TUTORIAL_STEPS.some(step => step.id === actionId && step.actionType === 'action'), actionId);
   }
+  assert.ok(TUTORIAL_STEPS.filter(step => step.actionType === 'action').every(step => step.allowGameplayInput && step.maskMode === 'maze-open'));
+  assert.ok(TUTORIAL_STEPS.filter(step => step.actionType === 'info').every(step => !step.allowGameplayInput));
+  assert.equal(TUTORIAL_STEPS.find(step => step.id === 'stats').target, '[data-tutorial-target="stats"]', 'stats use one shared container highlight');
 
   const tutorial = prepareStage(0), state = createRunState(tutorial, cloneMaze(tutorial.mazeTemplate));
   state.tutorial = createTutorialState();
   assert.equal(canMoveDuringTutorial(state.tutorial), false, 'info steps lock movement');
-  while (currentTutorialStep(state.tutorial).actionType === 'info') assert.equal(advanceTutorial(state.tutorial), true);
-  assert.equal(currentTutorialStep(state.tutorial).id, 'move-one');
-  assert.equal(isTutorialMoveAllowed(state.tutorial, state.maze, state.player, 'right'), true);
+  const advanceInfo = () => {
+    while (currentTutorialStep(state.tutorial)?.actionType === 'info') assert.equal(advanceTutorial(state.tutorial), true);
+  };
 
   function perform(direction) {
     const step = currentTutorialStep(state.tutorial);
     assert.equal(canMoveDuringTutorial(state.tutorial), true, step?.id);
     assert.equal(isTutorialMoveAllowed(state.tutorial, state.maze, state.player, direction), true, `${step?.id}: ${direction}`);
+    const previousPlayer = { ...state.player };
     const turn = takeTurn(state, direction);
     assert.equal(turn.moved, true, `${step?.id}: ${direction}`);
-    if (tutorialActionCompleted(step, turn, state.maze)) assert.equal(advanceTutorial(state.tutorial, true), true);
+    if (tutorialActionCompleted(step, turn, state.maze, state.tutorial, previousPlayer, state.player)) assert.equal(advanceTutorial(state.tutorial, true), true);
     return turn;
   }
 
-  perform('right');
-  while (currentTutorialStep(state.tutorial).actionType === 'info') assert.equal(advanceTutorial(state.tutorial), true);
+  advanceInfo();
+  assert.equal(currentTutorialStep(state.tutorial).id, 'move-one');
+  assert.equal(isTutorialMoveAllowed(state.tutorial, state.maze, state.player, 'down'), true);
+  assert.equal(isTutorialMoveAllowed(state.tutorial, state.maze, state.player, 'right'), false, 'the scripted first move points toward the Exit');
+  perform('down');
+  advanceInfo();
+  assert.equal(currentTutorialStep(state.tutorial).id, 'pass-through-exit');
+  const enterExit = perform('down');
+  assert.equal(enterExit.exitLocked, true);
+  assert.equal(enterExit.won, false, 'entering the locked Exit does not clear Stage 0');
+  assert.equal(currentTutorialStep(state.tutorial).id, 'pass-through-exit', 'entry alone does not complete the action');
+  assert.equal(state.tutorial.exitPassageEntered, true);
+  perform('down');
+  assert.equal(currentTutorialStep(state.tutorial).id, 'memory', 'leaving the Exit completes the passage lesson');
+  assert.equal(state.tutorial.exitPassageEntered, false);
+  advanceInfo();
   assert.equal(currentTutorialStep(state.tutorial).id, 'collect-red');
   assert.equal(isTutorialMoveAllowed(state.tutorial, state.maze, { x: 2, y: 3 }, 'right'), false, 'the NNE tile is protected until its lesson');
+  perform('down'); perform('right');
   assert.equal(perform('right').colorResult.type, 'correct');
 
-  while (currentTutorialStep(state.tutorial).actionType === 'info') assert.equal(advanceTutorial(state.tutorial), true);
+  advanceInfo();
   assert.equal(currentTutorialStep(state.tutorial).id, 'collect-nne');
   assert.equal(isTutorialMoveAllowed(state.tutorial, state.maze, { x: 6, y: 3 }, 'right'), false, 'COO cannot be collected during the NNE lesson');
-  perform('down'); perform('down');
+  perform('up'); perform('up');
   assert.equal(state.visionRange, tutorial.visionRange + 1);
 
   perform('right'); perform('right'); perform('right'); perform('right');
   assert.equal(state.memoryLevel, tutorial.initialMemoryLevel + 2);
-  while (currentTutorialStep(state.tutorial).actionType === 'info') assert.equal(advanceTutorial(state.tutorial), true);
+  advanceInfo();
   assert.equal(currentTutorialStep(state.tutorial).id, 'collect-orange');
   perform('left'); perform('left'); perform('up');
   assert.equal(perform('up').colorResult.type, 'correct');
   perform('right');
   assert.equal(perform('right').colorResult.type, 'complete');
   assert.equal(state.fullVisionMode, true);
-  perform('right'); perform('right');
-  for (let step = 0; step < 8; step++) perform('down');
+  advanceInfo();
+  assert.equal(currentTutorialStep(state.tutorial).id, 'reach-exit');
+  perform('down'); perform('down');
+  for (let step = 0; step < 6; step++) perform('left');
   assert.equal(state.won, true);
   assert.equal(state.tutorial.completed, true);
   assert.equal(state.tutorial.active, false);
+});
+
+test('tutorial dialog placement stays inside common mobile viewports and action dialogs avoid the Maze', () => {
+  for (const viewportWidth of [320, 375, 390, 412, 430]) {
+    const viewportHeight = 720;
+    const mazeRect = { left: 14, top: 178, right: viewportWidth - 14, bottom: 178 + viewportWidth - 28 };
+    const protectedRects = [{ left: viewportWidth / 2 - 12, top: 260, right: viewportWidth / 2 + 12, bottom: 284 }];
+    const result = chooseTutorialDialogPosition({
+      viewportWidth, viewportHeight, cardWidth: viewportWidth - 24, cardHeight: 142,
+      mazeRect, protectedRects, preferredPositions: ['top', 'bottom', 'right', 'left'], action: true,
+    });
+    const dialogRect = { left: result.left, top: result.top, right: result.left + result.width, bottom: result.top + result.height };
+    assert.ok(result.left >= 12 && dialogRect.right <= viewportWidth - 12, `${viewportWidth}px width clamps horizontally`);
+    assert.ok(result.top >= 12 && dialogRect.bottom <= viewportHeight - 12, `${viewportWidth}px width clamps vertically`);
+    assert.equal(Math.max(0, Math.min(dialogRect.right, mazeRect.right) - Math.max(dialogRect.left, mazeRect.left))
+      * Math.max(0, Math.min(dialogRect.bottom, mazeRect.bottom) - Math.max(dialogRect.top, mazeRect.top)), 0, `${viewportWidth}px action dialog stays outside Maze`);
+  }
+});
+
+test('tutorial dialogs can use a desktop side rail to stay clear of the Maze and its spotlight', () => {
+  const viewportWidth = 1280, viewportHeight = 720;
+  const mazeRect = { left: 341, top: 82, right: 939, bottom: 680 };
+  const sideWidth = Math.max(mazeRect.left - 12 - 16, viewportWidth - 12 - mazeRect.right - 16);
+  for (const action of [false, true]) {
+    const result = chooseTutorialDialogPosition({
+      viewportWidth, viewportHeight, cardWidth: sideWidth, cardHeight: 175,
+      focusRects: action ? [] : [mazeRect], mazeRect,
+      preferredPositions: ['top', 'bottom', 'right', 'left'], action,
+    });
+    const dialogRect = { left: result.left, top: result.top, right: result.left + result.width, bottom: result.top + result.height };
+    const overlap = Math.max(0, Math.min(dialogRect.right, mazeRect.right) - Math.max(dialogRect.left, mazeRect.left))
+      * Math.max(0, Math.min(dialogRect.bottom, mazeRect.bottom) - Math.max(dialogRect.top, mazeRect.top));
+    assert.equal(overlap, 0, `${action ? 'action card' : 'Maze intro'} stays completely outside the Maze`);
+  }
 });
 
 test('each Stage owns an independent 12-part background config and a scattered reveal order', () => {
@@ -1111,4 +1167,25 @@ test('the exit stays locked after round one and unlocks only after the last dist
   assert.equal(state.won, false);
   assert.equal(takeTurn(state, 'up').won, true);
   assert.equal(state.sequenceProgress, 2);
+});
+
+test('locked Exit remains walkable and solver may cross it before collecting the final target', () => {
+  const level = { ...LEVELS[0], baseColorOrder: ['red'], colorRounds: 1, colorCopies: { red: 1 } };
+  const tiles = Array.from({ length: 5 }, (_, y) => Array.from({ length: 5 }, (_, x) => y === 1 && x >= 1 && x <= 3 ? 'floor' : 'wall'));
+  const maze = {
+    width: 5, height: 5, tiles, spawn: { x: 1, y: 1 }, exit: { x: 2, y: 1 },
+    colors: [{ x: 3, y: 1, kind: 'color', id: 'red_1', color: 'red', completed: false }], items: [],
+  };
+  const sequence = ['red'];
+  const solution = solveMaze(maze, sequence);
+  assert.deepEqual(solution, ['right', 'right', 'left']);
+  assert.equal(validateSolutionPath(maze, solution, sequence), true);
+
+  const state = createRunState(level, maze);
+  const enterLockedExit = takeTurn(state, solution[0]);
+  assert.equal(enterLockedExit.moved, true);
+  assert.equal(enterLockedExit.exitLocked, true);
+  assert.equal(state.won, false);
+  takeTurn(state, solution[1]);
+  assert.equal(takeTurn(state, solution[2]).won, true);
 });

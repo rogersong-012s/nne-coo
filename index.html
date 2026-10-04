@@ -11,10 +11,10 @@
   <main class="app">
     <header class="topbar">
       <div class="brand"><strong>彩序迷宮</strong><span>Now Need Escape · Color · Order · Oblivion</span></div>
-      <section class="dashboard" aria-label="遊戲資訊">
-        <div class="stat" data-tutorial-target="stats"><span>STEP</span><strong id="steps">0</strong></div>
-        <div class="stat" data-tutorial-target="stats"><span>VIS</span><strong id="vision">2</strong></div>
-        <div class="stat" data-tutorial-target="stats"><span>MEM</span><strong id="memory">3</strong></div>
+      <section class="dashboard" data-tutorial-target="stats" aria-label="遊戲資訊">
+        <div class="stat"><span>STEP</span><strong id="steps">0</strong></div>
+        <div class="stat"><span>VIS</span><strong id="vision">2</strong></div>
+        <div class="stat"><span>MEM</span><strong id="memory">3</strong></div>
         <div class="stat level-name"><span>STAGE</span><strong id="level-name">1 / 100</strong></div>
         <div class="menu"><select id="level-select" aria-label="選擇 Stage"></select><button id="restart" type="button" title="重置目前 Stage">重置</button></div>
       </section>
@@ -50,10 +50,9 @@
       <g id="tutorial-outlines"></g>
     </svg>
     <section class="tutorial-card" id="tutorial-card" role="dialog" aria-modal="true" aria-labelledby="tutorial-title" aria-describedby="tutorial-body">
-      <div class="tutorial-eyebrow"><span id="tutorial-progress">TUTORIAL · 1 / 18</span><span>STAGE 0</span></div>
+      <div class="tutorial-eyebrow"><span id="tutorial-progress">TUTORIAL · 1 / 19</span><span>STAGE 0</span></div>
       <h2 id="tutorial-title">歡迎來到彩序迷宮</h2>
       <p id="tutorial-body"></p>
-      <p id="tutorial-action-hint" class="tutorial-action-hint" hidden>請完成迷宮操作，教學會自動繼續。</p>
       <div class="tutorial-actions">
         <button id="tutorial-skip" class="tutorial-skip" type="button">略過，前往 Stage 1</button>
         <button id="tutorial-next" class="tutorial-next" type="button">下一步</button>

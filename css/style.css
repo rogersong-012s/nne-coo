@@ -3,6 +3,10 @@
   font-family: Inter, "Noto Sans TC", system-ui, sans-serif;
   background: #090e19;
   color: #ecf0ff;
+  --tutorial-safe-top: env(safe-area-inset-top, 0px);
+  --tutorial-safe-right: env(safe-area-inset-right, 0px);
+  --tutorial-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --tutorial-safe-left: env(safe-area-inset-left, 0px);
 }
 
 * { box-sizing: border-box; }
@@ -145,29 +149,26 @@ button:focus-visible, select:focus-visible { outline: 2px solid #89c6ff; outline
 .modal-actions button:disabled { opacity: .4; cursor: not-allowed; }
 
 .tutorial-layer { position: fixed; inset: 0; z-index: 20; pointer-events: none; }
+.tutorial-layer[data-input-mode="locked"] { pointer-events: auto; }
 .tutorial-layer[hidden] { display: none; }
 .tutorial-spotlight { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; overflow: visible; pointer-events: none; }
 .tutorial-card {
-  position: fixed; left: 50%; width: min(500px, calc(100vw - 24px)); max-height: min(62vh, 420px); overflow: auto;
-  padding: 16px 18px 14px; transform: translateX(-50%); pointer-events: auto;
+  position: fixed; left: 12px; top: 12px; width: min(420px, calc(100vw - 24px)); max-height: min(62vh, 420px); overflow: auto;
+  padding: 16px 18px 14px; pointer-events: auto;
   color: #eaf2ff; background: linear-gradient(145deg, #1b2b45f5, #0e1729f5);
   border: 1px solid #8bb8d7; border-radius: 14px; box-shadow: 0 14px 40px #000b, 0 0 20px #7ddcff26;
   animation: tutorial-card-in .22s ease-out both;
 }
-.tutorial-card[data-placement="top"] { top: max(12px, env(safe-area-inset-top)); bottom: auto; }
-.tutorial-card[data-placement="bottom"] { top: auto; bottom: max(12px, env(safe-area-inset-bottom)); }
-.tutorial-card[data-placement="center"] { top: 50%; bottom: auto; transform: translate(-50%, -50%); }
 .tutorial-eyebrow { display: flex; justify-content: space-between; gap: 8px; color: #9dc3e0; font: 800 9px/1.2 ui-monospace, monospace; letter-spacing: .12em; }
 .tutorial-card h2 { margin: 8px 0 5px; color: #c9f1ff; font-size: clamp(18px, 3.4vw, 24px); line-height: 1.2; }
 .tutorial-card p { margin: 0; color: #d3deef; font-size: 13px; line-height: 1.55; }
-.tutorial-card .tutorial-action-hint { margin-top: 8px; color: #ffd89b; font-size: 11px; font-weight: 700; }
 .tutorial-actions { display: flex; justify-content: space-between; gap: 8px; margin-top: 12px; }
 .tutorial-actions button { min-height: 38px; padding: 7px 11px; font-size: 11px; font-weight: 800; touch-action: manipulation; }
 .tutorial-skip { border-color: #586984; background: #101a2c; color: #b8c6da; }
 .tutorial-next { min-width: 88px; border-color: #6cb9d8; background: #244664; color: #e5f8ff; }
 .tutorial-actions button:hover { filter: brightness(1.18); }
 .tutorial-actions button:focus-visible { outline: 2px solid #a8e8ff; outline-offset: 2px; }
-@keyframes tutorial-card-in { from { opacity: 0; translate: 0 7px; } to { opacity: 1; translate: 0 0; } }
+@keyframes tutorial-card-in { from { opacity: 0; } to { opacity: 1; } }
 
 @keyframes shake { 0%, 100% { transform: translateX(0); } 20%, 60% { transform: translateX(-5px); } 40%, 80% { transform: translateX(5px); } }
 .board.shake { animation: shake .35s; }
@@ -211,9 +212,10 @@ button:focus-visible, select:focus-visible { outline: 2px solid #89c6ff; outline
 }
 
 @media (max-width: 700px) {
-  .tutorial-card { width: calc(100vw - 16px); max-height: min(58vh, 420px); padding: 13px 14px 12px; border-radius: 12px; }
-  .tutorial-card p { font-size: 12px; line-height: 1.45; }
-  .tutorial-actions { margin-top: 9px; gap: 6px; }
+  .tutorial-card { width: calc(100vw - 25px); max-height: min(58vh, 420px); padding: 6px 12px 5px; border-radius: 12px; }
+  .tutorial-card h2 { margin: 3px 0 2px; font-size: clamp(16px, 4.6vw, 19px); }
+  .tutorial-card p { font-size: 10px; line-height: 1.3; }
+  .tutorial-actions { margin-top: 4px; gap: 6px; }
   .tutorial-actions button { min-height: 42px; padding: 6px 8px; font-size: 10px; }
   .tutorial-next { min-width: 76px; }
 }

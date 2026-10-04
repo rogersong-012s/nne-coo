@@ -4,6 +4,7 @@ import { cellVisibility, getEffectiveMemorySteps, isFeatureVisible, positionKey,
 import { currentRound, nextColor } from './objectives.js';
 import { STAGES, getColorConfig } from './levels.js';
 import { currentTutorialStep, TUTORIAL_STEPS } from './tutorial.js';
+import { chooseTutorialDialogPosition } from './tutorial-layout.js';
 
 const $ = id => document.getElementById(id);
 const refs = {
@@ -21,22 +22,22 @@ const now = () => globalThis.performance?.now?.() ?? Date.now();
 
 function tutorialTargetElements(step) {
   const selectors = [step?.target, step?.fallback].flatMap(value => Array.isArray(value) ? value : [value]).filter(Boolean);
-  const elements = new Set();
   for (const selector of selectors) {
     try {
-      for (const element of document.querySelectorAll(selector)) {
+      const element = document.querySelector(selector);
+      if (element) {
         const rect = element.getBoundingClientRect();
-        if (rect.width > 0 && rect.height > 0) { elements.add(element); if (elements.size >= 32) break; }
+        if (rect.width > 0 && rect.height > 0) return [element];
       }
     } catch { /* A malformed optional selector simply has no spotlight target. */ }
-    if (elements.size) break;
   }
-  return [...elements];
+  return [];
 }
 
 function layoutTutorialSpotlight() {
   if (refs.tutorial.hidden || !displayedTutorialStep) return;
-  const width = Math.max(1, window.innerWidth), height = Math.max(1, window.innerHeight);
+  const width = Math.max(1, document.documentElement.clientWidth || window.innerWidth);
+  const height = Math.max(1, window.innerHeight);
   refs.tutorialSvg.setAttribute('viewBox', `0 0 ${width} ${height}`);
   refs.tutorialSvg.setAttribute('width', String(width));
   refs.tutorialSvg.setAttribute('height', String(height));
@@ -48,32 +49,67 @@ function layoutTutorialSpotlight() {
   refs.tutorialDim.setAttribute('width', String(width)); refs.tutorialDim.setAttribute('height', String(height));
   refs.tutorialCutouts.replaceChildren(); refs.tutorialOutlines.replaceChildren();
 
-  const targets = tutorialTargetElements(displayedTutorialStep);
-  const rectangles = targets.map(element => element.getBoundingClientRect());
-  targets.forEach((element, index) => {
-    const rect = rectangles[index], pad = element.classList.contains('cell') ? 4 : 6;
+  const step = displayedTutorialStep;
+  const targets = tutorialTargetElements(step);
+  const targetRects = targets.map(element => element.getBoundingClientRect());
+  const mazeHostRect = refs.host?.getBoundingClientRect();
+  const boardRect = refs.board?.getBoundingClientRect();
+  const mazeIsOpen = step.maskMode === 'maze-open' || step.maskMode === 'none-on-maze';
+  const maskTargets = mazeIsOpen ? (refs.host ? [refs.host] : []) : step.maskMode === 'full' ? [] : targets;
+  const maskRects = maskTargets.map(element => element.getBoundingClientRect());
+  const isCell = element => element.classList.contains('cell');
+  maskTargets.forEach((element, index) => {
+    const rect = maskRects[index];
+    const pad = mazeIsOpen ? 0 : step.highlightPadding ?? (isCell(element) ? 4 : 8);
     const x = Math.max(0, rect.left - pad), y = Math.max(0, rect.top - pad);
     const right = Math.min(width, rect.right + pad), bottom = Math.min(height, rect.bottom + pad);
     const cutout = document.createElementNS(SVG_NS, 'rect');
     cutout.setAttribute('x', String(x)); cutout.setAttribute('y', String(y));
     cutout.setAttribute('width', String(Math.max(0, right - x))); cutout.setAttribute('height', String(Math.max(0, bottom - y)));
-    cutout.setAttribute('rx', element.classList.contains('cell') ? '5' : '10');
+    cutout.setAttribute('rx', isCell(element) ? '5' : '10');
     cutout.setAttribute('fill', 'black'); refs.tutorialCutouts.append(cutout);
 
-    const outline = document.createElementNS(SVG_NS, 'rect');
-    outline.setAttribute('x', String(x)); outline.setAttribute('y', String(y));
-    outline.setAttribute('width', String(Math.max(0, right - x))); outline.setAttribute('height', String(Math.max(0, bottom - y)));
-    outline.setAttribute('rx', element.classList.contains('cell') ? '5' : '10');
-    outline.setAttribute('fill', 'none'); outline.setAttribute('stroke', '#a8e8ff'); outline.setAttribute('stroke-width', '2');
-    refs.tutorialOutlines.append(outline);
+    if (!mazeIsOpen) {
+      const outline = document.createElementNS(SVG_NS, 'rect');
+      outline.setAttribute('x', String(x)); outline.setAttribute('y', String(y));
+      outline.setAttribute('width', String(Math.max(0, right - x))); outline.setAttribute('height', String(Math.max(0, bottom - y)));
+      outline.setAttribute('rx', isCell(element) ? '5' : '10');
+      outline.setAttribute('fill', 'none'); outline.setAttribute('stroke', '#a8e8ff'); outline.setAttribute('stroke-width', '2');
+      refs.tutorialOutlines.append(outline);
+    }
   });
 
-  let placement = displayedTutorialStep.placement;
-  if (!placement && rectangles.length) {
-    const averageCenterY = rectangles.reduce((sum, rect) => sum + rect.top + rect.height / 2, 0) / rectangles.length;
-    placement = averageCenterY > height * 0.55 ? 'top' : 'bottom';
-  }
-  refs.tutorialCard.dataset.placement = placement ?? (targets.length ? 'bottom' : 'center');
+  const protectedRects = [...document.querySelectorAll('.cell.player, .cell.exit, .cell.nne, .cell.coo, .cell.color')]
+    .map(element => element.getBoundingClientRect()).filter(rect => rect.width > 0 && rect.height > 0);
+  const rootStyle = getComputedStyle(document.documentElement);
+  const safeInsets = Object.fromEntries(['top', 'right', 'bottom', 'left'].map(side => [
+    side,
+    Number.parseFloat(rootStyle.getPropertyValue(`--tutorial-safe-${side}`)) || 0,
+  ]));
+  const safeLeft = Math.max(12, safeInsets.left), safeRight = Math.max(12, safeInsets.right);
+  const leftSideWidth = boardRect?.width ? boardRect.left - safeLeft - 16 : 0;
+  const rightSideWidth = boardRect?.width ? width - safeRight - boardRect.right - 16 : 0;
+  const sideWidth = Math.max(leftSideWidth, rightSideWidth);
+  const needsMazeSeparation = step.allowGameplayInput || targets.includes(refs.board);
+  refs.tutorialCard.style.width = needsMazeSeparation && width > 700 && sideWidth >= 260
+    ? `${Math.min(420, sideWidth)}px`
+    : '';
+  const cardRect = refs.tutorialCard.getBoundingClientRect();
+  const position = chooseTutorialDialogPosition({
+    viewportWidth: width,
+    viewportHeight: height,
+    cardWidth: cardRect.width,
+    cardHeight: cardRect.height,
+    focusRects: mazeIsOpen ? [] : targetRects,
+    mazeRect: boardRect?.width ? boardRect : mazeHostRect,
+    protectedRects,
+    preferredPositions: step.preferredPositions,
+    action: step.allowGameplayInput,
+    safeInsets,
+  });
+  refs.tutorialCard.style.left = `${position.left}px`;
+  refs.tutorialCard.style.top = `${position.top}px`;
+  refs.tutorialCard.dataset.placement = position.placement;
 }
 
 export function renderTutorialOverlay(tutorialState) {
@@ -85,11 +121,12 @@ export function renderTutorialOverlay(tutorialState) {
   $('tutorial-title').textContent = step.title;
   $('tutorial-body').textContent = step.body;
   refs.tutorialCard.setAttribute('aria-modal', String(step.actionType === 'info'));
+  refs.tutorial.dataset.inputMode = step.allowGameplayInput ? 'action' : 'locked';
+  refs.tutorial.dataset.maskMode = step.maskMode;
   $('tutorial-next').hidden = step.actionType === 'action';
-  $('tutorial-action-hint').hidden = step.actionType !== 'action';
   layoutTutorialSpotlight();
   requestAnimationFrame(layoutTutorialSpotlight);
-  (step.actionType === 'action' ? $('tutorial-skip') : $('tutorial-next')).focus({ preventScroll: true });
+  if (!step.allowGameplayInput) $('tutorial-next').focus({ preventScroll: true });
 }
 
 export function hideTutorialOverlay() {
@@ -100,6 +137,9 @@ export function hideTutorialOverlay() {
 }
 
 window.addEventListener('resize', layoutTutorialSpotlight);
+window.addEventListener('orientationchange', layoutTutorialSpotlight);
+window.visualViewport?.addEventListener('resize', layoutTutorialSpotlight);
+window.visualViewport?.addEventListener('scroll', layoutTutorialSpotlight);
 
 export function fitBoard(state) {
   const rect = refs.host.getBoundingClientRect();
@@ -117,6 +157,7 @@ export function fitBoard(state) {
   refs.player?.classList.add('position-reset');
   updatePlayerMarkerPosition(state);
   if (refs.player) requestAnimationFrame(() => refs.player?.classList.remove('position-reset'));
+  requestAnimationFrame(layoutTutorialSpotlight);
 }
 
 function updatePlayerMarkerPosition(state) {
