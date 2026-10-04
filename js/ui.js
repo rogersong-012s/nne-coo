@@ -2,25 +2,110 @@ import { COLOR_LIBRARY } from './config.js';
 import { cellVisibility, getEffectiveMemorySteps, getEffectiveVisionCells, getMemoryMarkers, isFeatureVisible, positionKey, recentHistory } from './memory.js';
 import { currentRound, nextColor } from './objectives.js';
 import { STAGES, getColorConfig } from './levels.js';
+import { currentTutorialStep, TUTORIAL_STEPS } from './tutorial.js';
 
 const $ = id => document.getElementById(id);
-const refs = { board: $('board'), host: $('board-host'), controlWrapper: $('maze-control-wrapper'), order: $('order'), toast: $('toast'), win: $('win'), debug: $('debug-panel'), notice: null };
+const refs = {
+  board: $('board'), host: $('board-host'), order: $('order'), toast: $('toast'), win: $('win'), debug: $('debug-panel'), notice: null,
+  tutorial: $('tutorial-overlay'), tutorialCard: $('tutorial-card'), tutorialSvg: $('tutorial-spotlight'), tutorialMask: $('tutorial-spotlight-mask'),
+  tutorialMaskBase: $('tutorial-mask-base'), tutorialCutouts: $('tutorial-cutouts'), tutorialDim: $('tutorial-dim'), tutorialOutlines: $('tutorial-outlines'),
+};
 let toastTimer, powerupNoticeTimer = null, powerupNoticeGeneration = 0;
 const reportedBackgroundFailures = new Set();
+let displayedTutorialStep = null;
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+function tutorialTargetElements(step) {
+  const selectors = [step?.target, step?.fallback].flatMap(value => Array.isArray(value) ? value : [value]).filter(Boolean);
+  const elements = new Set();
+  for (const selector of selectors) {
+    try {
+      for (const element of document.querySelectorAll(selector)) {
+        const rect = element.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) { elements.add(element); if (elements.size >= 32) break; }
+      }
+    } catch { /* A malformed optional selector simply has no spotlight target. */ }
+    if (elements.size) break;
+  }
+  return [...elements];
+}
+
+function layoutTutorialSpotlight() {
+  if (refs.tutorial.hidden || !displayedTutorialStep) return;
+  const width = Math.max(1, window.innerWidth), height = Math.max(1, window.innerHeight);
+  refs.tutorialSvg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  refs.tutorialSvg.setAttribute('width', String(width));
+  refs.tutorialSvg.setAttribute('height', String(height));
+  refs.tutorialMask.setAttribute('x', '0'); refs.tutorialMask.setAttribute('y', '0');
+  refs.tutorialMask.setAttribute('width', String(width)); refs.tutorialMask.setAttribute('height', String(height));
+  refs.tutorialMaskBase.setAttribute('x', '0'); refs.tutorialMaskBase.setAttribute('y', '0');
+  refs.tutorialMaskBase.setAttribute('width', String(width)); refs.tutorialMaskBase.setAttribute('height', String(height));
+  refs.tutorialDim.setAttribute('x', '0'); refs.tutorialDim.setAttribute('y', '0');
+  refs.tutorialDim.setAttribute('width', String(width)); refs.tutorialDim.setAttribute('height', String(height));
+  refs.tutorialCutouts.replaceChildren(); refs.tutorialOutlines.replaceChildren();
+
+  const targets = tutorialTargetElements(displayedTutorialStep);
+  const rectangles = targets.map(element => element.getBoundingClientRect());
+  targets.forEach((element, index) => {
+    const rect = rectangles[index], pad = element.classList.contains('cell') ? 4 : 6;
+    const x = Math.max(0, rect.left - pad), y = Math.max(0, rect.top - pad);
+    const right = Math.min(width, rect.right + pad), bottom = Math.min(height, rect.bottom + pad);
+    const cutout = document.createElementNS(SVG_NS, 'rect');
+    cutout.setAttribute('x', String(x)); cutout.setAttribute('y', String(y));
+    cutout.setAttribute('width', String(Math.max(0, right - x))); cutout.setAttribute('height', String(Math.max(0, bottom - y)));
+    cutout.setAttribute('rx', element.classList.contains('cell') ? '5' : '10');
+    cutout.setAttribute('fill', 'black'); refs.tutorialCutouts.append(cutout);
+
+    const outline = document.createElementNS(SVG_NS, 'rect');
+    outline.setAttribute('x', String(x)); outline.setAttribute('y', String(y));
+    outline.setAttribute('width', String(Math.max(0, right - x))); outline.setAttribute('height', String(Math.max(0, bottom - y)));
+    outline.setAttribute('rx', element.classList.contains('cell') ? '5' : '10');
+    outline.setAttribute('fill', 'none'); outline.setAttribute('stroke', '#a8e8ff'); outline.setAttribute('stroke-width', '2');
+    refs.tutorialOutlines.append(outline);
+  });
+
+  let placement = displayedTutorialStep.placement;
+  if (!placement && rectangles.length) {
+    const averageCenterY = rectangles.reduce((sum, rect) => sum + rect.top + rect.height / 2, 0) / rectangles.length;
+    placement = averageCenterY > height * 0.55 ? 'top' : 'bottom';
+  }
+  refs.tutorialCard.dataset.placement = placement ?? (targets.length ? 'bottom' : 'center');
+}
+
+export function renderTutorialOverlay(tutorialState) {
+  const step = currentTutorialStep(tutorialState);
+  if (!step) { hideTutorialOverlay(); return; }
+  displayedTutorialStep = step;
+  refs.tutorial.hidden = false;
+  $('tutorial-progress').textContent = `TUTORIAL · ${tutorialState.stepIndex + 1} / ${TUTORIAL_STEPS.length}`;
+  $('tutorial-title').textContent = step.title;
+  $('tutorial-body').textContent = step.body;
+  refs.tutorialCard.setAttribute('aria-modal', String(step.actionType === 'info'));
+  $('tutorial-next').hidden = step.actionType === 'action';
+  $('tutorial-action-hint').hidden = step.actionType !== 'action';
+  layoutTutorialSpotlight();
+  requestAnimationFrame(layoutTutorialSpotlight);
+  (step.actionType === 'action' ? $('tutorial-skip') : $('tutorial-next')).focus({ preventScroll: true });
+}
+
+export function hideTutorialOverlay() {
+  displayedTutorialStep = null;
+  if (!refs.tutorial) return;
+  refs.tutorial.hidden = true;
+  refs.tutorialCutouts.replaceChildren(); refs.tutorialOutlines.replaceChildren();
+}
+
+window.addEventListener('resize', layoutTutorialSpotlight);
 
 export function fitBoard(state) {
   const rect = refs.host.getBoundingClientRect();
-  const leftZone = refs.controlWrapper.querySelector('.maze-arrow-left').offsetWidth;
-  const rightZone = refs.controlWrapper.querySelector('.maze-arrow-right').offsetWidth;
-  const topZone = refs.controlWrapper.querySelector('.maze-arrow-up').offsetHeight;
-  const bottomZone = refs.controlWrapper.querySelector('.maze-arrow-down').offsetHeight;
-  const availableWidth = Math.max(1, rect.width - leftZone - rightZone);
-  const availableHeight = Math.max(1, rect.height - topZone - bottomZone);
+  const border = 4;
+  const availableWidth = Math.max(1, rect.width - border);
+  const availableHeight = Math.max(1, rect.height - border);
   const size = Math.max(1, Math.floor(Math.min(availableWidth / state.maze.width, availableHeight / state.maze.height)));
-  const boardWidth = size * state.maze.width;
-  const boardHeight = size * state.maze.height;
-  refs.controlWrapper.style.width = `${boardWidth + leftZone + rightZone}px`;
-  refs.controlWrapper.style.height = `${boardHeight + topZone + bottomZone}px`;
+  const boardWidth = size * state.maze.width + border;
+  const boardHeight = size * state.maze.height + border;
   refs.board.style.width = `${boardWidth}px`;
   refs.board.style.height = `${boardHeight}px`;
   refs.board.style.setProperty('--cell', `${size}px`);
@@ -178,7 +263,8 @@ function debugText(state, vision, memoryPathCells, memoryWallCells, effectiveMem
 
 export function render(state) {
   const effectiveMemorySteps = getEffectiveMemorySteps(state.memoryLevel);
-  $('steps').textContent = state.steps; $('vision').textContent = state.visionRange; $('memory').textContent = state.memoryLevel; $('level-name').textContent = `${state.level.stageId} / ${STAGES.length}`;
+  $('steps').textContent = state.steps; $('vision').textContent = state.visionRange; $('memory').textContent = state.memoryLevel;
+  $('level-name').textContent = state.level.isTutorial ? '0 · 教學' : `${state.level.stageId} / ${STAGES.length}`;
   $('debug').textContent = state.debug ? 'DEBUG ON' : 'DEBUG OFF'; $('debug').setAttribute('aria-pressed', String(state.debug));
   const { baseColorOrder, colorRounds, colorSequence } = getColorConfig(state.level);
   const targetColor = nextColor(state);
@@ -219,12 +305,14 @@ export function render(state) {
     const live = positions.get(key);
     const colorRemaining = live?.kind === 'color' ? (state.colorMemory?.get(live.id) ?? 0) : 0;
     const colorRemembered = !visible && colorRemaining > 0;
-    const feature = isFeatureVisible(live, visible, colorRemembered, state.debug) ? live : null;
+    const tutorialColorVisible = state.level.isTutorial && live?.kind === 'color' && !live.completed;
+    const feature = tutorialColorVisible || isFeatureVisible(live, visible, colorRemembered, state.debug) ? live : null;
     const terrain = reveal ? state.maze.tiles[y][x] : null;
     const content = cell.children[0], memoryMarker = cell.children[1], debugTag = cell.children[2];
     const showMemoryPath = !visible && memoryPathCells.has(key);
     const showMemoryWall = !visible && memoryWallCells.has(key);
     cell.className = `cell ${terrain ? `revealed ${terrain}` : 'unknown'}`;
+    if (Math.abs(x - state.player.x) + Math.abs(y - state.player.y) === 1) cell.classList.add('adjacent-player-cell');
     if (visible) cell.classList.add('vision-current');
     if (state.debug) cell.classList.add('debug-map');
     if (showMemoryPath) cell.classList.add('memory-path-marker');
@@ -237,7 +325,7 @@ export function render(state) {
 
     if (feature) {
       if (feature.kind === 'color') {
-        cell.classList.add('color', feature.color === targetColor ? 'color-active' : 'color-pending');
+        cell.classList.add('color', `color-${feature.color}`, feature.color === targetColor ? 'color-active' : 'color-pending');
         if (colorRemembered) cell.classList.add('color-memory');
         cell.style.setProperty('--feature-color', COLOR_LIBRARY[feature.color]?.color ?? '#ff58c7');
         content.textContent = '◆';
@@ -301,9 +389,17 @@ export function showWin(state, nextAvailable) {
   [['總步數', state.steps], ['NNE', state.nneCollected], ['COO', state.cooCollected], ['最終視野', state.visionRange], ['最終 MEM', state.memoryLevel]].forEach(([label, value]) => {
     const el = document.createElement('div'); el.innerHTML = `<span>${label}</span><strong>${value}</strong>`; result.append(el);
   });
-  $('win-title').textContent = nextAvailable ? `STAGE ${state.level.stageId} CLEAR` : 'ALL STAGES CLEAR';
-  $('win-description').textContent = nextAvailable ? '成功走出彩序迷宮' : '你已完成全部 100 個 Stage。';
-  $('next-level').disabled = !nextAvailable; $('next-level').textContent = nextAvailable ? 'NEXT STAGE' : 'ALL STAGES CLEAR';
+  if (state.level.isTutorial) {
+    $('win-title').textContent = 'TUTORIAL COMPLETE';
+    $('win-description').textContent = '你已完成 Stage 0 教學。準備好後，前往 Stage 1 開始正式關卡。';
+    $('play-again').textContent = '重玩教學';
+  } else {
+    $('win-title').textContent = nextAvailable ? `STAGE ${state.level.stageId} CLEAR` : 'ALL STAGES CLEAR';
+    $('win-description').textContent = nextAvailable ? '成功走出彩序迷宮' : '你已完成全部 100 個 Stage。';
+    $('play-again').textContent = '重新開始';
+  }
+  $('next-level').disabled = !nextAvailable;
+  $('next-level').textContent = state.level.isTutorial ? '前往 Stage 1' : nextAvailable ? 'NEXT STAGE' : 'ALL STAGES CLEAR';
   refs.win.hidden = false;
 }
 export function playFullVisionTransition() {

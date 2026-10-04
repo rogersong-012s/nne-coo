@@ -1,13 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { STAGES as LEVELS, SIZE_TIERS, getColorConfig, validateAllStages, validateLevel } from '../js/levels.js';
+import { GAME_STAGES, STAGES as LEVELS, SIZE_TIERS, getColorConfig, prepareStage, validateAllStages, validateLevel } from '../js/levels.js';
 import { cloneMaze, generateMaze, allReachable, hasOrderedRoute, isWalkable, solveMaze, validateChoiceSafety, validateSolutionPath } from '../js/maze.js';
 import { cellVisibility, getEffectiveMemorySteps, getEffectiveVisionCells, getMemoryMarkers, getVisionCells, isFeatureVisible, positionKey, recordMovement, recentHistory, updateColorMemory } from '../js/memory.js';
 import { currentRound, nextColor, resolveColor } from '../js/objectives.js';
 import { collectItem } from '../js/items.js';
 import { takeTurn } from '../js/turn.js';
-import { bindInput, directionForKey } from '../js/input.js';
+import { bindBoardInput, bindInput, cellFromBoardPoint, directionForAdjacentCell, directionForKey } from '../js/input.js';
 import { createRunState } from '../js/run-state.js';
+import { advanceTutorial, canMoveDuringTutorial, createTutorialState, currentTutorialStep, isTutorialMoveAllowed, TUTORIAL_STEPS, tutorialActionCompleted } from '../js/tutorial.js';
 
 function makeObjectiveState({ colors = ['red', 'orange', 'yellow'], rounds = 2 } = {}) {
   const baseColorOrder = [...colors];
@@ -104,6 +105,84 @@ test('campaign has 100 fixed-seed Stages across five capped size tiers', () => {
   assert.equal(getColorConfig(level3).colorSequence.length, 18);
   assert.equal(getColorConfig(level3).targetCount, 18);
   validateLevel(level3);
+});
+
+test('Stage 0 is a fixed short tutorial and leaves the Stage 1–100 campaign indices unchanged', () => {
+  const tutorial = prepareStage(0), firstFormalStage = prepareStage(1);
+  assert.equal(GAME_STAGES.length, 101);
+  assert.equal(GAME_STAGES[0], tutorial);
+  assert.equal(GAME_STAGES[1], firstFormalStage);
+  assert.equal(LEVELS.length, 100);
+  assert.equal(firstFormalStage.stageId, 1);
+  assert.deepEqual([tutorial.mazeWidth, tutorial.mazeHeight], [LEVELS[0].mazeWidth, LEVELS[0].mazeHeight]);
+  assert.equal(tutorial.isTutorial, true);
+  assert.deepEqual(getColorConfig(tutorial).colorSequence, ['red', 'orange', 'yellow']);
+  assert.equal(tutorial.colorRounds, 1);
+  assert.equal(tutorial.mazeTemplate.colors.length, 3);
+  assert.equal(tutorial.mazeTemplate.items.filter(item => item.kind === 'nne').length, 1);
+  assert.equal(tutorial.mazeTemplate.items.filter(item => item.kind === 'coo').length, 1);
+  assert.equal(allReachable(tutorial.mazeTemplate), true);
+  assert.ok(validateSolutionPath(tutorial.mazeTemplate, tutorial.solutionPath, getColorConfig(tutorial).colorSequence));
+  const firstRun = cloneMaze(tutorial.mazeTemplate);
+  firstRun.tiles[1][1] = 'wall'; firstRun.colors[0].completed = true; firstRun.items.pop();
+  const replay = cloneMaze(tutorial.mazeTemplate);
+  assert.equal(replay.tiles[1][1], 'floor');
+  assert.equal(replay.colors[0].completed, false);
+  assert.equal(replay.items.length, 2);
+  assert.deepEqual(replay.solutionPath, tutorial.solutionPath);
+  validateLevel(tutorial);
+});
+
+test('tutorial actions gate movement, prevent collecting future items early, and can be completed in game order', () => {
+  assert.ok(TUTORIAL_STEPS.some(step => step.actionType === 'info' && step.id === 'stats'));
+  assert.ok(TUTORIAL_STEPS.some(step => step.actionType === 'info' && step.id === 'sequence'));
+  for (const actionId of ['move-one', 'collect-red', 'collect-nne', 'collect-coo', 'collect-orange', 'collect-yellow', 'reach-exit']) {
+    assert.ok(TUTORIAL_STEPS.some(step => step.id === actionId && step.actionType === 'action'), actionId);
+  }
+
+  const tutorial = prepareStage(0), state = createRunState(tutorial, cloneMaze(tutorial.mazeTemplate));
+  state.tutorial = createTutorialState();
+  assert.equal(canMoveDuringTutorial(state.tutorial), false, 'info steps lock movement');
+  while (currentTutorialStep(state.tutorial).actionType === 'info') assert.equal(advanceTutorial(state.tutorial), true);
+  assert.equal(currentTutorialStep(state.tutorial).id, 'move-one');
+  assert.equal(isTutorialMoveAllowed(state.tutorial, state.maze, state.player, 'right'), true);
+
+  function perform(direction) {
+    const step = currentTutorialStep(state.tutorial);
+    assert.equal(canMoveDuringTutorial(state.tutorial), true, step?.id);
+    assert.equal(isTutorialMoveAllowed(state.tutorial, state.maze, state.player, direction), true, `${step?.id}: ${direction}`);
+    const turn = takeTurn(state, direction);
+    assert.equal(turn.moved, true, `${step?.id}: ${direction}`);
+    if (tutorialActionCompleted(step, turn, state.maze)) assert.equal(advanceTutorial(state.tutorial, true), true);
+    return turn;
+  }
+
+  perform('right');
+  while (currentTutorialStep(state.tutorial).actionType === 'info') assert.equal(advanceTutorial(state.tutorial), true);
+  assert.equal(currentTutorialStep(state.tutorial).id, 'collect-red');
+  assert.equal(isTutorialMoveAllowed(state.tutorial, state.maze, { x: 2, y: 3 }, 'right'), false, 'the NNE tile is protected until its lesson');
+  assert.equal(perform('right').colorResult.type, 'correct');
+
+  while (currentTutorialStep(state.tutorial).actionType === 'info') assert.equal(advanceTutorial(state.tutorial), true);
+  assert.equal(currentTutorialStep(state.tutorial).id, 'collect-nne');
+  assert.equal(isTutorialMoveAllowed(state.tutorial, state.maze, { x: 6, y: 3 }, 'right'), false, 'COO cannot be collected during the NNE lesson');
+  perform('down'); perform('down');
+  assert.equal(state.visionRange, tutorial.visionRange + 1);
+
+  perform('right'); perform('right'); perform('right'); perform('right');
+  assert.equal(state.memoryLevel, tutorial.initialMemoryLevel + 2);
+  while (currentTutorialStep(state.tutorial).actionType === 'info') assert.equal(advanceTutorial(state.tutorial), true);
+  assert.equal(currentTutorialStep(state.tutorial).id, 'collect-orange');
+  perform('left'); perform('left'); perform('up');
+  assert.equal(perform('up').colorResult.type, 'correct');
+  perform('right');
+  assert.equal(perform('right').colorResult.type, 'complete');
+  assert.equal(state.fullVisionMode, true);
+  perform('right'); perform('right');
+  for (let step = 0; step < 8; step++) perform('down');
+  assert.equal(state.won, true);
+  assert.equal(state.tutorial.completed, true);
+  assert.equal(state.tutorial.active, false);
 });
 
 test('each Stage owns an independent 12-part background config and a scattered reveal order', () => {
@@ -666,30 +745,17 @@ test('PC direction keys map to one-step movement directions', () => {
   assert.equal(directionForKey('Enter'), null);
 });
 
-test('maze perimeter arrows and bottom direction pad use one click movement path', () => {
+test('only the bottom direction pad buttons are bound as click controls', () => {
   const previous = { window: globalThis.window, document: globalThis.document, HTMLElement: globalThis.HTMLElement };
-  const listeners = new Map(), boardListeners = new Map();
   const directions = ['up', 'left', 'down', 'right'];
-  const buttons = [
-    ...directions.map(dir => ({ id: `maze:${dir}`, dataset: { dir } })),
-    ...directions.map(dir => ({ id: `pad:${dir}`, dataset: { dir } })),
-  ].map(button => ({
+  const listeners = new Map();
+  const buttons = directions.map(dir => ({ id: `pad:${dir}`, dataset: { dir } })).map(button => ({
     ...button,
-    addEventListener: (type, listener) => {
-      const key = `${button.id}:${type}`;
-      listeners.set(key, listener);
-    },
+    addEventListener: (type, listener) => listeners.set(`${button.id}:${type}`, listener),
   }));
-  const board = { addEventListener: (type, listener) => boardListeners.set(type, listener) };
   globalThis.HTMLElement = class { matches() { return false; } };
   globalThis.window = { addEventListener: (type, listener) => listeners.set(`window:${type}`, listener) };
-  globalThis.document = {
-    querySelectorAll: selector => {
-      assert.equal(selector, '[data-dir]');
-      return buttons;
-    },
-    getElementById: id => id === 'board' ? board : null,
-  };
+  globalThis.document = { querySelectorAll: selector => { assert.equal(selector, '[data-dir]'); return buttons; } };
   try {
     const moves = [];
     bindInput(direction => moves.push(direction), () => {});
@@ -699,8 +765,7 @@ test('maze perimeter arrows and bottom direction pad use one click movement path
       assert.equal(typeof click, 'function');
       click({ preventDefault() {} });
     }
-    assert.deepEqual(moves, ['up', 'left', 'down', 'right', 'up', 'left', 'down', 'right']);
-    assert.equal(boardListeners.size, 0, 'tapping or swiping the maze body has no movement listener');
+    assert.deepEqual(moves, ['up', 'left', 'down', 'right']);
     listeners.get('window:keydown')({ key: 'ArrowUp', preventDefault() {}, target: null });
     assert.equal(moves.at(-1), 'up', 'keyboard still shares the same movement callback');
   } finally {
@@ -709,6 +774,55 @@ test('maze perimeter arrows and bottom direction pad use one click movement path
       else globalThis[key] = previous[key];
     }
   }
+});
+
+test('maze cell movement accepts only the four cardinally adjacent cells', () => {
+  const player = { x: 5, y: 6 };
+  for (const [cell, direction] of [
+    [{ x: 5, y: 5 }, 'up'], [{ x: 5, y: 7 }, 'down'],
+    [{ x: 4, y: 6 }, 'left'], [{ x: 6, y: 6 }, 'right'],
+  ]) assert.equal(directionForAdjacentCell(player, cell), direction);
+  for (const cell of [{ x: 5, y: 6 }, { x: 4, y: 5 }, { x: 6, y: 7 }, { x: 3, y: 6 }, { x: 5, y: 9 }]) {
+    assert.equal(directionForAdjacentCell(player, cell), null);
+  }
+});
+
+test('board points map to cells using the responsive rendered cell size and border', () => {
+  const board = {
+    clientLeft: 2, clientTop: 2, clientWidth: 400, clientHeight: 240,
+    getBoundingClientRect: () => ({ left: 100, top: 200, width: 404, height: 244 }),
+  };
+  assert.deepEqual(cellFromBoardPoint(board, 10, 6, 100 + 2 + 4 * 40 + 20, 200 + 2 + 3 * 40 + 20), { x: 4, y: 3 });
+  assert.equal(cellFromBoardPoint(board, 10, 6, 100 + 1, 220), null, 'border is not a cell');
+  assert.equal(cellFromBoardPoint(board, 10, 6, 100 + 402, 220), null, 'right border is not a cell');
+  assert.equal(cellFromBoardPoint(board, 10, 6, 100 + 2 + 400, 220), null, 'points outside the rendered board are rejected');
+});
+
+test('one board click sends one adjacent direction through the shared move callback', () => {
+  const listeners = new Map(), moves = [];
+  const board = {
+    clientLeft: 2, clientTop: 2, clientWidth: 250, clientHeight: 250,
+    getBoundingClientRect: () => ({ left: 100, top: 200, width: 254, height: 254 }),
+    contains: cell => cell?.className === 'cell',
+    addEventListener: (type, listener) => listeners.set(type, listener),
+  };
+  let player = { x: 2, y: 2 };
+  const clickCell = (x, y) => {
+    const cell = { className: 'cell', dataset: { x: String(x), y: String(y) }, closest: selector => selector === '.cell' ? cell : null };
+    listeners.get('click')({
+      target: cell,
+      clientX: 100 + 2 + x * 50 + 25,
+      clientY: 200 + 2 + y * 50 + 25,
+    });
+  };
+  bindBoardInput(board, () => ({ width: 5, height: 5, player }), direction => moves.push(direction));
+  assert.deepEqual([...listeners.keys()], ['click'], 'mouse and touch share one click listener with no duplicate pointer/touch listeners');
+  clickCell(2, 1); clickCell(2, 3); clickCell(1, 2); clickCell(3, 2);
+  assert.deepEqual(moves, ['up', 'down', 'left', 'right']);
+  for (const [x, y] of [[2, 2], [1, 1], [3, 3], [0, 2], [2, 4]]) clickCell(x, y);
+  assert.deepEqual(moves, ['up', 'down', 'left', 'right'], 'self, diagonal and nonadjacent cells do not send movement');
+  clickCell(2, 1); // A click on an unknown cell is still attempted; walkability is left to movePlayer/takeTurn.
+  assert.equal(moves.at(-1), 'up');
 });
 
 test('Auto Solve can execute all 100 gated Stage solutions through the exit', () => {

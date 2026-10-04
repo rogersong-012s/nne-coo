@@ -12,26 +12,20 @@
     <header class="topbar">
       <div class="brand"><strong>彩序迷宮</strong><span>Now Need Escape · Color · Order · Oblivion</span></div>
       <section class="dashboard" aria-label="遊戲資訊">
-        <div class="stat"><span>STEP</span><strong id="steps">0</strong></div>
-        <div class="stat"><span>VIS</span><strong id="vision">2</strong></div>
-        <div class="stat"><span>MEM</span><strong id="memory">3</strong></div>
+        <div class="stat" data-tutorial-target="stats"><span>STEP</span><strong id="steps">0</strong></div>
+        <div class="stat" data-tutorial-target="stats"><span>VIS</span><strong id="vision">2</strong></div>
+        <div class="stat" data-tutorial-target="stats"><span>MEM</span><strong id="memory">3</strong></div>
         <div class="stat level-name"><span>STAGE</span><strong id="level-name">1 / 100</strong></div>
         <div class="menu"><select id="level-select" aria-label="選擇 Stage"></select><button id="restart" type="button" title="重置目前 Stage">重置</button></div>
       </section>
     </header>
-    <section class="order-panel" aria-label="彩色順序"><div class="order-label"><span>彩序</span><span id="order-hint">尋找紅色</span></div><div id="order" class="order"></div></section>
+    <section id="order-panel" class="order-panel" aria-label="彩色順序"><div class="order-label"><span>彩序</span><span id="order-hint">尋找紅色</span></div><div id="order" class="order"></div></section>
     <div id="board-host" class="board-host">
-      <div id="maze-control-wrapper" class="maze-control-wrapper">
-        <button class="maze-arrow maze-arrow-up" type="button" data-dir="up" aria-label="迷宮外框：向上移動">↑</button>
-        <button class="maze-arrow maze-arrow-down" type="button" data-dir="down" aria-label="迷宮外框：向下移動">↓</button>
-        <button class="maze-arrow maze-arrow-left" type="button" data-dir="left" aria-label="迷宮外框：向左移動">←</button>
-        <button class="maze-arrow maze-arrow-right" type="button" data-dir="right" aria-label="迷宮外框：向右移動">→</button>
-        <div id="board" class="board" role="grid" aria-label="迷宮"></div>
-      </div>
+      <div id="board" class="board" role="grid" aria-label="迷宮"></div>
       <pre id="debug-panel" class="debug-panel" hidden></pre><div id="toast" class="toast" role="status" aria-live="polite"></div>
     </div>
     <section class="bottom">
-      <p class="legend"><span class="legend-items">● 玩家　🔴🟠🟡🟢🔵🟣 目標　✦ NNE　✧ COO　▣ 出口</span><span class="mobile-controls-hint">點迷宮四周箭頭或下方方向鍵</span></p>
+      <p class="legend"><span class="legend-items">● 玩家　🔴🟠🟡🟢🔵🟣 目標　✦ NNE　✧ COO　▣ 出口</span><span class="mobile-controls-hint">點擊玩家相鄰格或使用下方方向鍵</span></p>
       <div class="help"><span>WASD / 方向鍵</span><button id="debug" type="button" aria-pressed="false">DEBUG OFF</button></div>
       <div class="controls" aria-label="方向控制">
         <button type="button" data-dir="up" aria-label="向上移動">↑</button>
@@ -44,6 +38,28 @@
       </button>
     </section>
   </main>
+  <div id="tutorial-overlay" class="tutorial-layer" hidden>
+    <svg id="tutorial-spotlight" class="tutorial-spotlight" aria-hidden="true" preserveAspectRatio="none">
+      <defs>
+        <mask id="tutorial-spotlight-mask" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse">
+          <rect id="tutorial-mask-base" fill="white"></rect>
+          <g id="tutorial-cutouts"></g>
+        </mask>
+      </defs>
+      <rect id="tutorial-dim" fill="#030712" fill-opacity=".68" mask="url(#tutorial-spotlight-mask)"></rect>
+      <g id="tutorial-outlines"></g>
+    </svg>
+    <section class="tutorial-card" id="tutorial-card" role="dialog" aria-modal="true" aria-labelledby="tutorial-title" aria-describedby="tutorial-body">
+      <div class="tutorial-eyebrow"><span id="tutorial-progress">TUTORIAL · 1 / 18</span><span>STAGE 0</span></div>
+      <h2 id="tutorial-title">歡迎來到彩序迷宮</h2>
+      <p id="tutorial-body"></p>
+      <p id="tutorial-action-hint" class="tutorial-action-hint" hidden>請完成迷宮操作，教學會自動繼續。</p>
+      <div class="tutorial-actions">
+        <button id="tutorial-skip" class="tutorial-skip" type="button">略過，前往 Stage 1</button>
+        <button id="tutorial-next" class="tutorial-next" type="button">下一步</button>
+      </div>
+    </section>
+  </div>
   <div id="win" class="modal" hidden><div class="modal-card"><div class="eyebrow">NNECOO · COMPLETE</div><h1 id="win-title">STAGE CLEAR</h1><p id="win-description">成功走出彩序迷宮</p><div id="results" class="results"></div><div class="modal-actions"><button id="play-again" type="button">重新開始</button><button id="next-level" type="button">NEXT STAGE</button></div></div></div>
   <script type="module" src="js/game.js"></script>
 </body>

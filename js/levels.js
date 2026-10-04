@@ -1,5 +1,6 @@
 import { generateMaze, isWalkable, solveMaze, validateChoiceSafety, validateSolutionPath } from './maze.js';
 import { getBackgroundPartCount, getColorConfig, validateLevel } from './level-config.js';
+import { TUTORIAL_STAGE } from './tutorial-stage.js';
 
 const BASE_COLOR_ORDER = Object.freeze(['red', 'orange', 'yellow', 'green', 'blue', 'purple']);
 const STAGES_PER_TIER = 20;
@@ -114,11 +115,12 @@ function makeStage(stageId) {
 }
 
 export const STAGES = Array.from({ length: STAGE_COUNT }, (_, index) => makeStage(index + 1));
+export const GAME_STAGES = [TUTORIAL_STAGE, ...STAGES];
 // Retain the old data export for tools that imported it; the player-facing campaign is Stage-based.
 export const LEVELS = STAGES;
 
 export function prepareStage(stageOrId) {
-  const stage = typeof stageOrId === 'number' ? STAGES[stageOrId - 1] : stageOrId;
+  const stage = typeof stageOrId === 'number' ? GAME_STAGES.find(candidate => candidate.stageId === stageOrId) : stageOrId;
   if (!stage) throw new RangeError(`找不到 Stage ${stageOrId}。`);
   if (stage.mazeTemplate) return stage;
   validateLevel(stage);

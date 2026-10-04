@@ -1,52 +1,70 @@
 import { DEBUG } from './config.js';
-import { STAGES, getColorConfig, prepareStage, validateLevel } from './levels.js';
+import { GAME_STAGES, getColorConfig, prepareStage, validateLevel } from './levels.js';
 import { cloneMaze, allReachable, solveMaze, validateSolutionPath } from './maze.js';
 import { takeTurn } from './turn.js';
 import { getVisionCells, updateColorMemory } from './memory.js';
-import { buildBoard, clearPowerupNotice, fitBoard, hideWin, playFullVisionTransition, render, showPowerupNotice, showToast, showWin } from './ui.js';
-import { bindInput } from './input.js';
+import { buildBoard, clearPowerupNotice, fitBoard, hideTutorialOverlay, hideWin, playFullVisionTransition, render, renderTutorialOverlay, showPowerupNotice, showToast, showWin } from './ui.js';
+import { bindBoardInput, bindInput } from './input.js';
 import { createRunState } from './run-state.js';
+import { advanceTutorial, canMoveDuringTutorial, createTutorialState, currentTutorialStep, isTutorialMoveAllowed, tutorialActionCompleted } from './tutorial.js';
 
-let state, stageIndex = 0, autoSolveTimer = null;
+const INITIAL_STAGE_ID = 1; // Change to 0 later to start first-time players in the tutorial.
+let state, stageIndex = GAME_STAGES.findIndex(stage => stage.stageId === INITIAL_STAGE_ID), autoSolveTimer = null;
 const select = document.getElementById('level-select');
 const cheatButton = document.getElementById('cheat');
 const controls = [...document.querySelectorAll('[data-dir]')];
-STAGES.forEach((stage, index) => {
+GAME_STAGES.forEach((stage, index) => {
   const option = document.createElement('option'); option.value = index; option.textContent = stage.name; select.append(option);
 });
+
+function syncMovementControls() {
+  const tutorialLocked = Boolean(state?.tutorial?.active && !canMoveDuringTutorial(state.tutorial));
+  const autoSolveLocked = autoSolveTimer !== null;
+  controls.forEach(button => { button.disabled = tutorialLocked || autoSolveLocked; });
+}
 
 function stopAutoSolve() {
   if (autoSolveTimer !== null) clearInterval(autoSolveTimer);
   autoSolveTimer = null;
   cheatButton.classList.remove('running');
   cheatButton.setAttribute('aria-label', '重置並自動執行本關解答');
-  controls.forEach(button => { button.disabled = false; });
+  syncMovementControls();
 }
 
 function start(index = stageIndex) {
   stopAutoSolve();
+  hideTutorialOverlay();
   clearPowerupNotice();
   stageIndex = index;
-  const level = prepareStage(STAGES[stageIndex]);
+  const level = prepareStage(GAME_STAGES[stageIndex]);
   validateLevel(level);
   const maze = cloneMaze(level.mazeTemplate);
   const sequence = getColorConfig(level).colorSequence;
   if (!allReachable(maze) || !validateSolutionPath(maze, maze.solutionPath, sequence)) throw new Error('產生了無解迷宮。');
   state = createRunState(level, maze, DEBUG);
+  if (level.isTutorial) state.tutorial = createTutorialState();
+  cheatButton.hidden = Boolean(level.isTutorial);
   const initialVision = getVisionCells(maze, state.player, state.visionRange).visibleCells;
   updateColorMemory(state, initialVision);
   select.value = String(index); hideWin(); buildBoard(state); render(state);
+  syncMovementControls();
+  if (state.tutorial?.active) renderTutorialOverlay(state.tutorial);
   showToast(`${level.name} · 尋找紅色`);
 }
 
 function executeMove(direction) {
   const wasFullVisionMode = state.fullVisionMode;
+  const tutorialStep = currentTutorialStep(state.tutorial);
   const turn = takeTurn(state, direction);
   if (!turn.moved) {
     if (turn.reason === 'color-locked') showToast('順序未到，暫時無法通行');
     return turn;
   }
+  if (tutorialActionCompleted(tutorialStep, turn, state.maze)) advanceTutorial(state.tutorial, true);
   render(state);
+  if (state.tutorial?.active) renderTutorialOverlay(state.tutorial);
+  else hideTutorialOverlay();
+  syncMovementControls();
   if (!wasFullVisionMode && state.fullVisionMode) playFullVisionTransition();
   if (turn.item === 'nne') showPowerupNotice('NNE GET!', 'EYE +1', 'nne');
   else if (turn.item === 'coo') showPowerupNotice('COO GET!', 'MEM +2', 'coo');
@@ -59,17 +77,34 @@ function executeMove(direction) {
 
   if (state.won) {
     stopAutoSolve();
-    showWin(state, stageIndex < STAGES.length - 1);
+    showWin(state, stageIndex < GAME_STAGES.length - 1);
   }
   return turn;
 }
 
 function move(direction) {
   if (autoSolveTimer !== null) return;
+  if (state?.tutorial?.active) {
+    if (!canMoveDuringTutorial(state.tutorial)) return;
+    if (!isTutorialMoveAllowed(state.tutorial, state.maze, state.player, direction)) return;
+  }
   executeMove(direction);
 }
 
+function nextTutorialStep() {
+  if (!state?.tutorial?.active || !advanceTutorial(state.tutorial)) return;
+  if (state.tutorial.active) renderTutorialOverlay(state.tutorial);
+  else hideTutorialOverlay();
+  syncMovementControls();
+}
+
+function skipTutorial() {
+  const stageOneIndex = GAME_STAGES.findIndex(stage => stage.stageId === 1);
+  if (stageOneIndex >= 0) start(stageOneIndex);
+}
+
 function runAutoSolve() {
+  if (state?.level.isTutorial) return;
   if (autoSolveTimer !== null) {
     stopAutoSolve();
     showToast('自動解答已停止');
@@ -86,7 +121,7 @@ function runAutoSolve() {
 
   cheatButton.classList.add('running');
   cheatButton.setAttribute('aria-label', '停止自動解答');
-  controls.forEach(button => { button.disabled = true; });
+  syncMovementControls();
   let stepIndex = 0;
   autoSolveTimer = setInterval(() => {
     const turn = executeMove(solution[stepIndex++]);
@@ -101,14 +136,22 @@ function runAutoSolve() {
       showToast('解答已結束但出口未通關', 'mistake');
     }
   }, 160);
+  syncMovementControls();
 }
 
 bindInput(move, () => { state.debug = !state.debug; render(state); });
+bindBoardInput(document.getElementById('board'), () => ({
+  width: state.maze.width,
+  height: state.maze.height,
+  player: state.player,
+}), move);
 document.getElementById('restart').addEventListener('click', () => start());
 document.getElementById('play-again').addEventListener('click', () => start());
-document.getElementById('next-level').addEventListener('click', () => { if (stageIndex < STAGES.length - 1) start(stageIndex + 1); });
+document.getElementById('next-level').addEventListener('click', () => { if (stageIndex < GAME_STAGES.length - 1) start(stageIndex + 1); });
 document.getElementById('debug').addEventListener('click', () => { state.debug = !state.debug; render(state); });
 cheatButton.addEventListener('click', runAutoSolve);
+document.getElementById('tutorial-next').addEventListener('click', nextTutorialStep);
+document.getElementById('tutorial-skip').addEventListener('click', skipTutorial);
 select.addEventListener('change', () => start(Number(select.value)));
 new ResizeObserver(() => { if (state) fitBoard(state); }).observe(document.getElementById('board-host'));
-start();
+start(stageIndex);
