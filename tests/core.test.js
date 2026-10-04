@@ -61,9 +61,12 @@ function makeNavigationSnapshot(state, {
 
 function makeFakeScheduler() {
   let nextId = 1;
+  let currentTime = 0;
   const jobs = new Map();
   return {
     jobs,
+    now() { return currentTime; },
+    advance(milliseconds) { currentTime += milliseconds; },
     schedule(callback, delay) { const id = nextId++; jobs.set(id, { callback, delay }); return id; },
     unschedule(id) { jobs.delete(id); },
     runNext() {
@@ -71,6 +74,7 @@ function makeFakeScheduler() {
       if (!first) return false;
       const [id, job] = first;
       jobs.delete(id);
+      currentTime += job.delay;
       job.callback();
       return job.delay;
     },
@@ -894,7 +898,7 @@ test('Stage 1 click navigation executes a reachable visible route through normal
   assert.ok(target, 'Stage 1 exposes a visible walkable destination farther than one move');
   const path = findClickMovePath(snapshot, target);
   const timers = makeFakeScheduler();
-  const controller = new ClickMoveController({ interval: CLICK_MOVE_STEP_INTERVAL, schedule: timers.schedule, unschedule: timers.unschedule });
+  const controller = new ClickMoveController({ interval: CLICK_MOVE_STEP_INTERVAL, schedule: timers.schedule, unschedule: timers.unschedule, now: timers.now });
   controller.start(path, target, {
     canStep: direction => canMovePlayerInDirection(state, direction).allowed,
     step: direction => takeTurn(state, direction),
@@ -909,21 +913,17 @@ test('Stage 1 click navigation executes a reachable visible route through normal
 test('short, medium and long click paths move immediately then use only one configured interval per remaining step', () => {
   for (const length of [1, 5, 12]) {
     const timers = makeFakeScheduler();
-    const controller = new ClickMoveController({ interval: CLICK_MOVE_STEP_INTERVAL, schedule: timers.schedule, unschedule: timers.unschedule });
-    let elapsed = 0;
+    const controller = new ClickMoveController({ interval: CLICK_MOVE_STEP_INTERVAL, schedule: timers.schedule, unschedule: timers.unschedule, now: timers.now });
     const movementTimes = [];
     controller.start(Array.from({ length }, () => 'right'), { x: length, y: 0 }, {
       canStep: () => true,
-      step: () => { movementTimes.push(elapsed); return { moved: true }; },
+      step: () => { movementTimes.push(timers.now()); return { moved: true }; },
     });
 
     assert.equal(movementTimes.length, 1, `${length}-step path performs its first step in the click task`);
-    while (timers.jobs.size) {
-      elapsed += timers.jobs.values().next().value.delay;
-      timers.runNext();
-    }
+    while (timers.jobs.size) timers.runNext();
     assert.deepEqual(movementTimes, Array.from({ length }, (_, index) => index * CLICK_MOVE_STEP_INTERVAL));
-    assert.equal(elapsed, Math.max(0, length - 1) * CLICK_MOVE_STEP_INTERVAL);
+    assert.equal(timers.now(), Math.max(0, length - 1) * CLICK_MOVE_STEP_INTERVAL);
   }
 });
 
@@ -994,7 +994,7 @@ test('latest click cancels stale routes and recomputes from the player current p
   state.visionRange = 8;
   state.movementHistory = [];
   const timers = makeFakeScheduler();
-  const controller = new ClickMoveController({ interval: CLICK_MOVE_STEP_INTERVAL, schedule: timers.schedule, unschedule: timers.unschedule });
+  const controller = new ClickMoveController({ interval: CLICK_MOVE_STEP_INTERVAL, schedule: timers.schedule, unschedule: timers.unschedule, now: timers.now });
   const navigateTo = target => {
     const snapshot = createClickNavigationSnapshot(state, false);
     const path = findClickMovePath(snapshot, target);
@@ -1009,7 +1009,10 @@ test('latest click cancels stale routes and recomputes from the player current p
   timers.runNext();
   assert.deepEqual(state.player, { x: 3, y: 1 });
   assert.deepEqual(navigateTo({ x: 4, y: 1 }), ['right'], 'a new target is calculated from the current player position');
-  assert.deepEqual(state.player, { x: 4, y: 1 }, 'a replacement one-step path also starts immediately');
+  assert.deepEqual(state.player, { x: 3, y: 1 }, 'replacement route respects the previous step cadence');
+  assert.equal(timers.jobs.size, 1, 'the replacement step waits for the shared cadence deadline');
+  timers.runNext();
+  assert.deepEqual(state.player, { x: 4, y: 1 });
   assert.equal(timers.jobs.size, 0, 'the completed replacement path has no leftover timer');
   assert.equal(state.steps, 3);
   assert.equal(state.movementHistory.length, 3, 'each automatic step uses the standard turn and history logic');
@@ -1019,28 +1022,36 @@ test('latest click cancels stale routes and recomputes from the player current p
 
 test('rapid target changes keep only the last route; manual/reset cancellation clears pending ticks', () => {
   const timers = makeFakeScheduler(), moves = [];
-  const controller = new ClickMoveController({ interval: 120, schedule: timers.schedule, unschedule: timers.unschedule });
+  const controller = new ClickMoveController({ interval: CLICK_MOVE_STEP_INTERVAL, schedule: timers.schedule, unschedule: timers.unschedule, now: timers.now });
   const run = (name, path) => controller.start(path, { x: 0, y: 0 }, {
     canStep: () => true,
     step: direction => { moves.push(`${name}:${direction}`); return { moved: true }; },
   });
   run('A', ['right', 'right']);
   assert.deepEqual(moves, ['A:right'], 'route A starts on the click');
+  timers.advance(30);
   run('B', ['down', 'down']);
   run('C', ['left']);
-  assert.deepEqual(moves, ['A:right', 'B:down', 'C:left'], 'each new click immediately takes over and discards the old remainder');
+  assert.deepEqual(moves, ['A:right'], 'rapid retargeting replaces the route without inserting an immediate step');
+  assert.equal(timers.jobs.size, 1, 'only the latest route has a pending step');
+  assert.equal(timers.jobs.values().next().value.delay, CLICK_MOVE_STEP_INTERVAL - 30, 'the replacement keeps the original movement deadline');
+  timers.runNext();
+  assert.deepEqual(moves, ['A:right', 'C:left'], 'only the latest route moves when the shared interval expires');
   assert.equal(timers.jobs.size, 0, 'the final one-step route leaves no timer behind');
   assert.equal(controller.active, false);
 
+  controller.resetCadence(); // RESET starts a new run with a fresh immediate first move.
   run('reset', ['up', 'up']);
+  assert.deepEqual(moves, ['A:right', 'C:left', 'reset:up']);
   assert.equal(timers.jobs.size, 1, 'only the uncompleted second step has a timer');
   controller.cancel(); // Same cancellation entry point is called for manual input, RESET, and Stage Change.
+  controller.resetCadence();
   assert.equal(timers.jobs.size, 0);
   assert.equal(controller.active, false);
   assert.equal(controller.target, null);
   assert.deepEqual(controller.path, []);
   assert.equal(timers.runNext(), false);
-  assert.deepEqual(moves, ['A:right', 'B:down', 'C:left', 'reset:up']);
+  assert.deepEqual(moves, ['A:right', 'C:left', 'reset:up']);
 });
 
 test('Auto Solve can execute all 100 gated Stage solutions through the exit', () => {

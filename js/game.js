@@ -27,8 +27,9 @@ function syncMovementControls() {
   controls.forEach(button => { button.disabled = tutorialLocked || autoSolveLocked; });
 }
 
-function cancelClickMove() {
+function cancelClickMove(resetCadence = false) {
   clickMoveController.cancel();
+  if (resetCadence) clickMoveController.resetCadence();
   if (state) state.clickMoveTarget = null;
   updateClickMoveMarker(null);
 }
@@ -42,7 +43,7 @@ function stopAutoSolve() {
 }
 
 function start(index = stageIndex) {
-  cancelClickMove();
+  cancelClickMove(true);
   stopAutoSolve();
   hideTutorialOverlay();
   clearPowerupNotice();
@@ -115,7 +116,8 @@ function move(direction) {
     if (!canMoveDuringTutorial(state.tutorial)) return;
     if (!isTutorialMoveAllowed(state.tutorial, state.maze, state.player, direction)) return;
   }
-  executeMove(direction);
+  const turn = executeMove(direction);
+  if (turn.moved) clickMoveController.noteExternalMove();
 }
 
 function requestClickMove(target, inputTiming = null) {
@@ -202,6 +204,7 @@ function runAutoSolve() {
       showToast('解答路徑中斷', 'mistake');
       return;
     }
+    clickMoveController.noteExternalMove();
     if (state.won) return;
     if (stepIndex >= solution.length) {
       stopAutoSolve();

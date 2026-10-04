@@ -134,16 +134,19 @@ export class ClickMoveController {
     interval = CLICK_MOVE_STEP_INTERVAL,
     schedule = (callback, delay) => globalThis.setTimeout(callback, delay),
     unschedule = timer => globalThis.clearTimeout(timer),
+    now = () => globalThis.performance?.now?.() ?? Date.now(),
   } = {}) {
     this.interval = interval;
     this.schedule = schedule;
     this.unschedule = unschedule;
+    this.now = now;
     this.active = false;
     this.target = null;
     this.path = [];
     this.token = 0;
     this.timer = null;
     this.handlers = null;
+    this.lastStepAt = null;
   }
 
   cancel() {
@@ -154,6 +157,14 @@ export class ClickMoveController {
     this.target = null;
     this.path = [];
     this.handlers = null;
+  }
+
+  resetCadence() {
+    this.lastStepAt = null;
+  }
+
+  noteExternalMove(at = this.now()) {
+    this.lastStepAt = at;
   }
 
   start(path, target, { canStep, step, onFinish = () => {} }) {
@@ -177,21 +188,31 @@ export class ClickMoveController {
       onFinishCallback?.(reason);
     };
 
+    const scheduleNextStep = () => {
+      const remaining = this.lastStepAt === null
+        ? 0
+        : Math.max(0, this.lastStepAt + this.interval - this.now());
+      if (remaining === 0) tick();
+      else this.timer = this.schedule(tick, remaining);
+    };
+
     const tick = () => {
       if (token !== this.token || !this.active) return;
       this.timer = null;
       const direction = this.path[0];
       if (!this.handlers.canStep(direction)) { finish('blocked'); return; }
+      const stepStartedAt = this.now();
       const result = this.handlers.step(direction, { isFinalStep: this.path.length === 1 });
+      if (result?.moved) this.lastStepAt = stepStartedAt;
       if (token !== this.token || !this.active) return;
       if (!result?.moved) { finish('blocked'); return; }
       this.path.shift();
       if (this.path.length === 0) { finish('complete'); return; }
-      this.timer = this.schedule(tick, this.interval);
+      scheduleNextStep();
     };
 
-    // Start moving in the click's task. Only subsequent steps wait on the
-    // configured interval, so the first response never pays a full step delay.
-    tick();
+    // The first route starts immediately, but replacements share the same
+    // movement cadence so rapid retargeting cannot insert extra steps.
+    scheduleNextStep();
   }
 }
