@@ -114,7 +114,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid #89c6ff; outline
   100% { opacity: 0; transform: translate(-50%, -50%) scale(.98); }
 }
 
-.helper-actions { display: flex; align-items: center; justify-content: center; gap: 7px; flex: none; }
+.game-controls-row { display: flex; align-items: center; gap: 7px; flex: none; }
 .game-helper-button {
   box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center;
   width: 84px; min-width: 84px; height: 36px; min-height: 36px; flex: 0 0 84px;
@@ -126,7 +126,6 @@ button:focus-visible, select:focus-visible { outline: 2px solid #89c6ff; outline
 .game-helper-button:hover:not(:disabled) { background: #294064; border-color: #7893b7; color: #fff; opacity: 1; }
 .game-helper-button:active:not(:disabled) { background: #354b70; transform: translateY(1px); }
 .game-helper-button:disabled { opacity: .55; cursor: not-allowed; }
-.cheat-button { align-self: center; }
 .cheat-running { display: none; }
 .cheat-button.running .cheat-idle { display: none; }
 .cheat-button.running .cheat-running { display: inline; color: #ffd19b; }
@@ -301,13 +300,19 @@ button:focus-visible, select:focus-visible { outline: 2px solid #89c6ff; outline
   .sequence-arrow { font-size: 9px; }
   .order-chip { flex-basis: 12px; width: 12px; height: 12px; }
   .order-chip.done::after { font-size: 9px; }
-  .bottom { position: relative; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto; justify-items: center; align-items: center; gap: 4px; }
+  .bottom { position: relative; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto; justify-items: center; align-items: center; gap: 4px; }
   .legend { grid-column: 1 / -1; grid-row: 1; display: flex; justify-content: center; flex-wrap: wrap; column-gap: 8px; row-gap: 3px; font-size: 9px; text-align: center; }
   .legend-items { white-space: nowrap; }
   .mobile-controls-hint { display: inline; color: #a9bad6; font-size: 10px; }
-  .helper-actions { grid-column: 1; grid-row: 2; gap: 8px; }
-  .game-helper-button { width: 84px; min-width: 84px; height: 48px; min-height: 48px; flex-basis: 84px; font-size: 14px; }
-  .controls { grid-column: 1; grid-row: 3; justify-self: center; align-self: end; display: grid; grid-template-columns: repeat(3, clamp(48px, 14vw, 56px)); grid-template-rows: repeat(2, clamp(48px, 14vw, 56px)); gap: 4px; }
+  .game-controls-row {
+    grid-column: 1; grid-row: 2; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: end; width: 100%; gap: 0;
+    padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right));
+  }
+  .game-controls-row #light-mode { grid-column: 1; justify-self: start; }
+  .game-controls-row #cheat { grid-column: 3; justify-self: end; }
+  .game-helper-button { width: clamp(54px, 17vw, 72px); min-width: clamp(54px, 17vw, 72px); height: 48px; min-height: 48px; flex-basis: clamp(54px, 17vw, 72px); padding: 0 4px; font-size: 14px; }
+  .controls { grid-column: 2; grid-row: 1; justify-self: center; align-self: end; display: grid; grid-template-columns: repeat(3, clamp(48px, 14vw, 56px)); grid-template-rows: repeat(2, clamp(48px, 14vw, 56px)); gap: 4px; }
   .controls button { min-width: 48px; min-height: 48px; padding: 0; font-size: 22px; font-weight: 700; touch-action: manipulation; user-select: none; -webkit-tap-highlight-color: transparent; transition: transform 80ms ease, background-color 80ms ease; }
   .controls button:active { transform: scale(.94); background: #35517b; }
   .controls [data-dir=up] { grid-column: 2; grid-row: 1; }
@@ -347,9 +352,14 @@ button:focus-visible, select:focus-visible { outline: 2px solid #89c6ff; outline
   .bottom { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); grid-template-rows: 1fr; min-height: 100px; gap: 2px; }
   .controls { display: grid; grid-template-columns: repeat(3, 48px); grid-template-rows: repeat(2, 48px); gap: 4px; }
   .controls button { min-width: 48px; min-height: 48px; font-size: 20px; }
+  .game-controls-row {
+    grid-column: 1 / -1; grid-row: 1; align-self: center;
+    padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right));
+  }
   .game-helper-button { width: clamp(52px, 13vw, 62px); min-width: clamp(52px, 13vw, 62px); flex-basis: clamp(52px, 13vw, 62px); padding: 0 4px; }
-  .helper-actions { grid-column: 1; grid-row: 1; justify-self: start; }
-  .controls { grid-column: 2; grid-row: 1; justify-self: center; align-self: center; }
+  .game-controls-row #light-mode { grid-column: 1; grid-row: 1; justify-self: start; }
+  .game-controls-row #cheat { grid-column: 3; grid-row: 1; justify-self: end; }
+  .controls { grid-column: 2; grid-row: 1; justify-self: center; align-self: end; }
   .help { display: none; }
 }
 
