@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import {
   PLAYER_STATE_STORAGE_KEY,
   addClearedStage,
@@ -105,4 +106,16 @@ test('manual, click and Auto Solve completion all count as Stage clears', () => 
   assert.equal(shouldAddClearedStage('click-to-move'), true);
   assert.equal(shouldAddClearedStage('auto-solve'), true);
   assert.equal(shouldAddClearedStage('auto-solve', false), false, 'an explicit opt-out remains available to non-game callers');
+});
+
+test('gameplay and album share the same player-state module URL', async () => {
+  const sources = await Promise.all(['../js/game.js', '../js/album.js'].map(path =>
+    readFile(new URL(path, import.meta.url), 'utf8')));
+  const moduleUrls = sources.map(source => {
+    const match = source.match(/from ['"](\.\/player-state\.js(?:\?[^'"]*)?)['"]/);
+    assert.ok(match, 'expected a player-state.js import');
+    return match[1];
+  });
+
+  assert.equal(moduleUrls[0], moduleUrls[1], 'separate URLs create separate module state caches');
 });

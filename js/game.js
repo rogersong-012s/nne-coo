@@ -9,7 +9,7 @@ import { buildBoard, clearAlbumCollectAnimation, clearPowerupNotice, fitBoard, h
 import { bindBoardInput, bindInput } from './input.js?v=20261005-reward-ad-1';
 import { createRunState } from './run-state.js?v=20261005-reward-ad-1';
 import { advanceTutorial, canMoveDuringTutorial, createTutorialState, currentTutorialStep, isTutorialMoveAllowed, tutorialActionCompleted } from './tutorial.js';
-import { createAlbum, getAlbumProgress } from './album.js?v=20261005-album-title-screen-1';
+import { createAlbum, getAlbumProgress } from './album.js?v=20261005-album-unlock-fix-1';
 import { addClearedStage, getInitialStageId, getPlayerState, setLastStage, setTutorialCompleted, shouldAddClearedStage } from './player-state.js?v=20261005-reward-ad-1';
 import { createRewardAdModal } from './reward-ad.js?v=20261005-reward-ad-1';
 

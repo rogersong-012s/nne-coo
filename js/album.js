@@ -1,4 +1,6 @@
-import { getPlayerState } from './player-state.js?v=20261005-album-3';
+// Keep this URL identical to game.js so album and gameplay share one in-memory
+// player-state module as well as the same persisted localStorage record.
+import { getPlayerState } from './player-state.js?v=20261005-reward-ad-1';
 import { getBackgroundImageCandidates, preloadFirstAvailableImage } from './background-assets.js';
 
 export const ALBUM_DESKTOP_PAGE_SIZE = 20;
