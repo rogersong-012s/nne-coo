@@ -114,13 +114,23 @@ button:focus-visible, select:focus-visible { outline: 2px solid #89c6ff; outline
   100% { opacity: 0; transform: translate(-50%, -50%) scale(.98); }
 }
 
-.cheat-button { align-self: center; min-height: 32px; padding: 5px 8px; border-color: #566987; background: #101a2bbd; color: #bac8dd; font: 700 11px/1 ui-monospace, monospace; letter-spacing: .07em; opacity: .8; white-space: nowrap; }
-.cheat-button:hover { opacity: 1; color: white; }
+.helper-actions { display: flex; align-items: center; justify-content: center; gap: 7px; flex: none; }
+.game-helper-button {
+  box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center;
+  width: 84px; min-width: 84px; height: 36px; min-height: 36px; flex: 0 0 84px;
+  padding: 0 8px; border: 1px solid #566987; border-radius: 8px;
+  background: #101a2bbd; color: #c5d2e4; font: 700 13px/1 ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: .02em; text-align: center; white-space: nowrap; opacity: .9;
+  touch-action: manipulation; transition: background-color .12s, border-color .12s, color .12s, opacity .12s, transform .08s;
+}
+.game-helper-button:hover:not(:disabled) { background: #294064; border-color: #7893b7; color: #fff; opacity: 1; }
+.game-helper-button:active:not(:disabled) { background: #354b70; transform: translateY(1px); }
+.game-helper-button:disabled { opacity: .55; cursor: not-allowed; }
+.cheat-button { align-self: center; }
 .cheat-running { display: none; }
 .cheat-button.running .cheat-idle { display: none; }
 .cheat-button.running .cheat-running { display: inline; color: #ffd19b; }
 .cheat-button.running { border-color: #bd8c58; }
-.cheat-button:disabled { cursor: wait; }
 .toast { position: absolute; top: 38px; left: 50%; transform: translateX(-50%) translateY(-6px); padding: 7px 12px; border: 1px solid #6681a7; background: #112440f0; border-radius: 8px; box-shadow: 0 6px 20px #0008; opacity: 0; pointer-events: none; transition: opacity .16s, transform .16s; text-align: center; white-space: nowrap; font-size: 12px; font-weight: 700; z-index: 8; }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 .toast.mistake { border-color: #ff6c78; color: #ffd3d7; background: #4b1d2aef; }
@@ -132,9 +142,6 @@ button:focus-visible, select:focus-visible { outline: 2px solid #89c6ff; outline
 .controls { display: none; }
 .controls button:disabled { opacity: .38; cursor: wait; }
 .help { display: flex; align-items: center; gap: 8px; color: #8294b4; font-size: 10px; white-space: nowrap; }
-.help button { font: 700 12px/1 ui-sans-serif, system-ui, sans-serif; padding: 4px 6px; }
-#light-mode { min-width: 56px; min-height: 32px; }
-#light-mode:disabled { opacity: .55; cursor: not-allowed; }
 .modal[hidden] { display: none; }
 .modal { position: fixed; inset: 0; z-index: 10; background: #030712cc; display: flex; align-items: center; justify-content: center; padding: 15px; }
 .modal-card { width: min(100%, 410px); padding: 24px; text-align: center; background: linear-gradient(145deg, #263451, #11192c); border: 1px solid #7890b5; border-radius: 18px; box-shadow: 0 24px 70px #000a; }
@@ -227,9 +234,6 @@ button:focus-visible, select:focus-visible { outline: 2px solid #89c6ff; outline
   .sequence-arrow { font-size: 8px; }
   .order-chip { flex-basis: 10px; width: 10px; height: 10px; }
   .order-chip.done::after { font-size: 9px; }
-  .cheat-button { grid-column: 3; grid-row: 1 / 3; align-self: end; padding: 5px 6px; font-size: 12px; }
-  .cheat-idle { font-size: 0; }
-  .cheat-idle::after { content: '解答'; font-size: 12px; }
   .bottom { min-height: 55px; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; grid-template-rows: auto auto; gap: 1px 5px; }
   .legend { grid-column: 1; grid-row: 1; font-size: 8px; }
   .controls { grid-column: 2; grid-row: 1 / 3; display: grid; grid-template-columns: repeat(3, 38px); grid-template-rows: repeat(2, 25px); gap: 2px; }
@@ -239,7 +243,6 @@ button:focus-visible, select:focus-visible { outline: 2px solid #89c6ff; outline
   .controls [data-dir=down] { grid-column: 2; grid-row: 2; }
   .controls [data-dir=right] { grid-column: 3; grid-row: 2; }
   .help { grid-column: 1; grid-row: 2; flex-wrap: wrap; gap: 3px; font-size: 8px; }
-  .help button { padding: 3px 5px; font-size: 12px; }
 }
 
 @media (max-width: 700px) {
@@ -298,23 +301,20 @@ button:focus-visible, select:focus-visible { outline: 2px solid #89c6ff; outline
   .sequence-arrow { font-size: 9px; }
   .order-chip { flex-basis: 12px; width: 12px; height: 12px; }
   .order-chip.done::after { font-size: 9px; }
-  .cheat-idle { font-size: 0; }
-  .cheat-idle::after { content: '解答'; font-size: 12px; }
-  .bottom { position: relative; min-height: 120px; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; justify-items: center; align-items: center; gap: 4px; }
+  .bottom { position: relative; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto; justify-items: center; align-items: center; gap: 4px; }
   .legend { grid-column: 1 / -1; grid-row: 1; display: flex; justify-content: center; flex-wrap: wrap; column-gap: 8px; row-gap: 3px; font-size: 9px; text-align: center; }
   .legend-items { white-space: nowrap; }
   .mobile-controls-hint { display: inline; color: #a9bad6; font-size: 10px; }
-  .controls { grid-column: 1; grid-row: 2; justify-self: center; align-self: end; display: grid; grid-template-columns: repeat(3, clamp(48px, 14vw, 56px)); grid-template-rows: repeat(2, clamp(48px, 14vw, 56px)); gap: 4px; }
+  .helper-actions { grid-column: 1; grid-row: 2; gap: 8px; }
+  .game-helper-button { width: 84px; min-width: 84px; height: 48px; min-height: 48px; flex-basis: 84px; font-size: 14px; }
+  .controls { grid-column: 1; grid-row: 3; justify-self: center; align-self: end; display: grid; grid-template-columns: repeat(3, clamp(48px, 14vw, 56px)); grid-template-rows: repeat(2, clamp(48px, 14vw, 56px)); gap: 4px; }
   .controls button { min-width: 48px; min-height: 48px; padding: 0; font-size: 22px; font-weight: 700; touch-action: manipulation; user-select: none; -webkit-tap-highlight-color: transparent; transition: transform 80ms ease, background-color 80ms ease; }
   .controls button:active { transform: scale(.94); background: #35517b; }
   .controls [data-dir=up] { grid-column: 2; grid-row: 1; }
   .controls [data-dir=left] { grid-column: 1; grid-row: 2; }
   .controls [data-dir=down] { grid-column: 2; grid-row: 2; }
   .controls [data-dir=right] { grid-column: 3; grid-row: 2; }
-  .help { position: absolute; left: 0; bottom: 4px; z-index: 2; justify-content: center; gap: 0; font-size: 10px; }
-  .help span { display: none; }
-  .help button { min-width: 54px; min-height: 48px; padding: 5px 7px; font-size: 10px; }
-  .cheat-button { position: absolute; right: 0; bottom: 4px; z-index: 2; min-width: 58px; min-height: 48px; padding: 5px 7px; font-size: 12px; }
+  .help { display: none; }
 }
 
 @media (max-width: 360px) {
@@ -327,8 +327,6 @@ button:focus-visible, select:focus-visible { outline: 2px solid #89c6ff; outline
   .order-chip { flex-basis: 11px; width: 11px; height: 11px; }
   .sequence-arrow { font-size: 8px; }
   .controls { gap: 3px; }
-  .help button { min-width: 50px; padding-right: 5px; padding-left: 5px; }
-  .cheat-button { min-width: 54px; padding-right: 4px; padding-left: 4px; }
 }
 
 /* Short mobile landscape viewports keep touch targets usable and compact the header. */
@@ -346,13 +344,13 @@ button:focus-visible, select:focus-visible { outline: 2px solid #89c6ff; outline
   .order-panel { padding: 1px 5px; }
   .order-label { font-size: 9px; }
   .order-chip { flex-basis: 10px; width: 10px; height: 10px; }
-  .bottom { display: grid; grid-template-columns: 1fr; grid-template-rows: 1fr auto; min-height: 100px; }
+  .bottom { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); grid-template-rows: 1fr; min-height: 100px; gap: 2px; }
   .controls { display: grid; grid-template-columns: repeat(3, 48px); grid-template-rows: repeat(2, 48px); gap: 4px; }
   .controls button { min-width: 48px; min-height: 48px; font-size: 20px; }
-  .help { position: absolute; left: 0; bottom: 4px; gap: 0; }
-  .help button, .cheat-button { min-height: 48px; padding: 4px 6px; font-size: 11px; }
-  .cheat-button { position: absolute; right: 0; bottom: 4px; }
-  .cheat-idle::after { font-size: 11px; }
+  .game-helper-button { width: clamp(52px, 13vw, 62px); min-width: clamp(52px, 13vw, 62px); flex-basis: clamp(52px, 13vw, 62px); padding: 0 4px; }
+  .helper-actions { grid-column: 1; grid-row: 1; justify-self: start; }
+  .controls { grid-column: 2; grid-row: 1; justify-self: center; align-self: center; }
+  .help { display: none; }
 }
 
 @media (max-height: 520px) {
