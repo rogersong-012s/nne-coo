@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0b1020">
   <title>彩序迷宮 · NNECOO</title>
-  <link rel="stylesheet" href="css/style.css?v=20261005-title-screen-1">
+  <link rel="stylesheet" href="css/style.css?v=20261005-reward-ad-1">
 </head>
 <body>
   <section id="start-screen" class="start-screen" aria-labelledby="start-title">
@@ -39,11 +39,11 @@
     <section id="order-panel" class="order-panel" aria-label="彩色順序"><div class="order-label"><span>彩序</span><span id="order-hint">尋找紅色</span></div><div id="order" class="order"></div></section>
     <div id="board-host" class="board-host">
       <div id="board" class="board" role="grid" tabindex="-1" aria-label="迷宮"></div>
-      <pre id="debug-panel" class="debug-panel" hidden></pre><div id="toast" class="toast" role="status" aria-live="polite"></div>
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
     </div>
     <section class="bottom">
       <p class="legend"><span class="legend-items">● 玩家　🔴🟠🟡🟢🔵🟣 目標　✦ NNE　✧ COO　▣ 出口</span><span class="mobile-controls-hint">點擊視野中可達格自動前往，或使用下方方向鍵</span></p>
-      <div class="help"><span>WASD / 方向鍵</span><button id="debug" type="button" aria-pressed="false">DEBUG OFF</button></div>
+      <div class="help"><span>WASD / 方向鍵</span><button id="light-mode" type="button" aria-label="開啟 NNE 廣告並點亮迷宮">亮燈</button></div>
       <div class="controls" aria-label="方向控制">
         <button type="button" data-dir="up" aria-label="向上移動">↑</button>
         <button type="button" data-dir="left" aria-label="向左移動">←</button>
@@ -108,6 +108,15 @@
     </section>
   </div>
   <div id="win" class="modal" hidden><div class="modal-card"><div class="eyebrow">NNECOO · COMPLETE</div><h1 id="win-title">STAGE CLEAR</h1><p id="win-description">成功走出彩序迷宮</p><div id="results" class="results"></div><div class="modal-actions"><button id="play-again" type="button">重新開始</button><button id="next-level" type="button">NEXT STAGE</button></div></div></div>
-  <script type="module" src="js/game.js?v=20261005-title-screen-1"></script>
+  <div id="reward-ad-overlay" class="reward-ad-overlay" hidden aria-hidden="true">
+    <section id="reward-ad-dialog" class="reward-ad-card" role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="reward-ad-headline" aria-describedby="reward-ad-body">
+      <div class="reward-ad-visual" aria-hidden="true"><span id="reward-ad-brand">NNE</span><i></i><i></i><i></i></div>
+      <h2 id="reward-ad-headline"></h2>
+      <p id="reward-ad-body"></p>
+      <p id="reward-ad-countdown" class="reward-ad-countdown" role="status" aria-live="polite"></p>
+      <button id="reward-ad-action" class="reward-ad-action" type="button" disabled></button>
+    </section>
+  </div>
+  <script type="module" src="js/game.js?v=20261005-reward-ad-1"></script>
 </body>
 </html>

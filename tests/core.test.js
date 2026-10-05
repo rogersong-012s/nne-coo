@@ -6,7 +6,7 @@ import { cellVisibility, getEffectiveMemorySteps, getEffectiveVisionCells, getMe
 import { currentRound, nextColor, resolveColor } from '../js/objectives.js';
 import { collectItem } from '../js/items.js';
 import { takeTurn } from '../js/turn.js';
-import { ALLOW_MEMORY_CLICK_MOVE, CLICK_MOVE_STEP_INTERVAL } from '../js/config.js';
+import { ALLOW_MEMORY_CLICK_MOVE, AUTO_SOLVE_COUNTS_AS_CLEAR, CLICK_MOVE_STEP_INTERVAL } from '../js/config.js';
 import { ClickMoveController, createClickNavigationSnapshot, findClickMovePath, getClickMoveReachableCells } from '../js/click-navigation.js';
 import { canMovePlayerInDirection } from '../js/player.js';
 import { bindBoardInput, bindInput, cellFromBoardPoint, directionForKey } from '../js/input.js';
@@ -458,6 +458,7 @@ test('cloning a level template restores targets, items, walls, and solution path
   assert.equal(restarted.sequenceProgress, 0);
   assert.equal(restarted.revealedBackgroundParts, 0);
   assert.equal(restarted.fullVisionMode, false);
+  assert.equal(restarted.lightModeActive, false);
   assert.equal(restarted.movementHistory.length, 0);
   assert.equal(restarted.nneCollected, 0);
   assert.equal(restarted.cooCollected, 0);
@@ -968,6 +969,28 @@ test('Stage 1 click navigation executes a reachable visible route through normal
   assert.deepEqual(state.player, target);
   assert.equal(state.steps, path.length, 'every controller step goes through the standard turn system');
   assert.equal(controller.active, false);
+});
+
+test('light mode makes the whole maze known to click BFS without bypassing collision or completing the Stage', () => {
+  const state = makeNavigationState({
+    width: 5,
+    height: 5,
+    walls: [{ x: 2, y: 1 }],
+    colors: [{ x: 2, y: 2, kind: 'color', id: 'orange_1', color: 'orange', completed: false }],
+  });
+  state.lightModeActive = true;
+  const snapshot = createClickNavigationSnapshot(state, ALLOW_MEMORY_CLICK_MOVE);
+  assert.equal(snapshot.visibleCells.size, 25);
+  assert.equal(state.fullVisionMode, false);
+  assert.equal(state.sequenceProgress, 0);
+  assert.equal(state.revealedBackgroundParts, 0);
+  assert.deepEqual(findClickMovePath(snapshot, { x: 3, y: 1 }), ['down', 'down', 'right', 'right', 'up', 'up']);
+  assert.equal(findClickMovePath(snapshot, { x: 2, y: 1 }), null, 'Light Mode does not permit paths through walls');
+  assert.equal(findClickMovePath(snapshot, { x: 2, y: 2 }), null, 'Light Mode does not permit entering a locked color');
+});
+
+test('Auto Solve is configured to count as a formal Stage clear', () => {
+  assert.equal(AUTO_SOLVE_COUNTS_AS_CLEAR, true);
 });
 
 test('short, medium and long click paths move immediately then use only one configured interval per remaining step', () => {

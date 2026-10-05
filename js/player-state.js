@@ -79,7 +79,7 @@ export function addClearedStage(stageId, storage) {
   }, storage);
 }
 
-export function shouldAddClearedStage(source = 'player', autoSolveCountsAsClear = false) {
+export function shouldAddClearedStage(source = 'player', autoSolveCountsAsClear = true) {
   return source !== 'auto-solve' || autoSolveCountsAsClear === true;
 }
 

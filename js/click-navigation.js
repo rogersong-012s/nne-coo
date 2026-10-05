@@ -5,8 +5,8 @@ import { getEffectiveMemorySteps, getEffectiveVisionCells, getMemoryMarkers, pos
 const entries = Object.entries(DIRECTION);
 
 export function createClickNavigationSnapshot(state, allowMemoryNavigation = ALLOW_MEMORY_CLICK_MOVE) {
-  const vision = getEffectiveVisionCells(state.maze, state.player, state.visionRange, state.fullVisionMode);
-  const markers = state.fullVisionMode
+  const vision = getEffectiveVisionCells(state.maze, state.player, state.visionRange, state.fullVisionMode || state.lightModeActive);
+  const markers = state.fullVisionMode || state.lightModeActive
     ? { memoryPathCells: new Set(), memoryWallCells: new Set() }
     : getMemoryMarkers(state.maze, state.movementHistory, getEffectiveMemorySteps(state.memoryLevel), vision.visibleCells);
   const colorMemoryTargets = new Set();

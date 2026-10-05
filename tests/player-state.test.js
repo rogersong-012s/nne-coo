@@ -100,9 +100,9 @@ test('collection summary reaches exactly 100 unique formal Stages', () => {
   assert.equal(collection.includes(100), true);
 });
 
-test('manual and click movement clears count, while Auto Solve does not by default', () => {
+test('manual, click and Auto Solve completion all count as Stage clears', () => {
   assert.equal(shouldAddClearedStage('player'), true);
   assert.equal(shouldAddClearedStage('click-to-move'), true);
-  assert.equal(shouldAddClearedStage('auto-solve'), false);
-  assert.equal(shouldAddClearedStage('auto-solve', true), true);
+  assert.equal(shouldAddClearedStage('auto-solve'), true);
+  assert.equal(shouldAddClearedStage('auto-solve', false), false, 'an explicit opt-out remains available to non-game callers');
 });

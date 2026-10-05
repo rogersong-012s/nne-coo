@@ -1,23 +1,25 @@
-import { ALLOW_MEMORY_CLICK_MOVE, AUTO_SOLVE_COUNTS_AS_CLEAR, CLICK_MOVE_STEP_INTERVAL, DEBUG, DEBUG_INPUT_PERFORMANCE } from './config.js';
+import { ALLOW_MEMORY_CLICK_MOVE, AUTO_SOLVE_COUNTS_AS_CLEAR, CLICK_MOVE_STEP_INTERVAL, DEBUG, DEBUG_INPUT_PERFORMANCE } from './config.js?v=20261005-reward-ad-1';
 import { GAME_STAGES, STAGES, getColorConfig, prepareStage, validateLevel } from './levels.js';
 import { cloneMaze, allReachable, solveMaze, validateSolutionPath } from './maze.js';
-import { ClickMoveController, createClickNavigationSnapshot, findClickMovePath } from './click-navigation.js';
+import { ClickMoveController, createClickNavigationSnapshot, findClickMovePath } from './click-navigation.js?v=20261005-reward-ad-1';
 import { canMovePlayerInDirection } from './player.js';
 import { takeTurn } from './turn.js';
 import { getVisionCells, updateColorMemory } from './memory.js';
-import { buildBoard, clearAlbumCollectAnimation, clearPowerupNotice, fitBoard, hideTutorialOverlay, hideWin, playAlbumCollectAnimation, playFullVisionTransition, render, renderTutorialOverlay, showPowerupNotice, showToast, showWin, updateClickMoveMarker } from './ui.js?v=20261005-album-viewer-1';
-import { bindBoardInput, bindInput } from './input.js';
-import { createRunState } from './run-state.js';
+import { buildBoard, clearAlbumCollectAnimation, clearPowerupNotice, fitBoard, hideTutorialOverlay, hideWin, playAlbumCollectAnimation, playFullVisionTransition, render, renderTutorialOverlay, showPowerupNotice, showToast, showWin, updateClickMoveMarker } from './ui.js?v=20261005-reward-ad-1';
+import { bindBoardInput, bindInput } from './input.js?v=20261005-reward-ad-1';
+import { createRunState } from './run-state.js?v=20261005-reward-ad-1';
 import { advanceTutorial, canMoveDuringTutorial, createTutorialState, currentTutorialStep, isTutorialMoveAllowed, tutorialActionCompleted } from './tutorial.js';
 import { createAlbum, getAlbumProgress } from './album.js?v=20261005-album-title-screen-1';
-import { addClearedStage, getInitialStageId, getPlayerState, setLastStage, setTutorialCompleted, shouldAddClearedStage } from './player-state.js?v=20261005-album-3';
+import { addClearedStage, getInitialStageId, getPlayerState, setLastStage, setTutorialCompleted, shouldAddClearedStage } from './player-state.js?v=20261005-reward-ad-1';
+import { createRewardAdModal } from './reward-ad.js?v=20261005-reward-ad-1';
 
 const START_SCREEN_TRANSITION_MS = 200;
-let state, stageIndex = 0, autoSolveTimer = null, albumOpen = false;
+let state, stageIndex = 0, autoSolveTimer = null, albumOpen = false, rewardAd;
 let appView = 'start', albumReturnContext = 'start', startScreenExitTimer = null;
 const clickMoveController = new ClickMoveController({ interval: CLICK_MOVE_STEP_INTERVAL });
 const select = document.getElementById('level-select');
 const cheatButton = document.getElementById('cheat');
+const lightButton = document.getElementById('light-mode');
 const appRoot = document.querySelector('.app');
 const startScreen = document.getElementById('start-screen');
 const startEnterButton = document.getElementById('start-enter');
@@ -33,7 +35,15 @@ function syncMovementControls() {
   const tutorialLocked = Boolean(state?.tutorial?.active && !canMoveDuringTutorial(state.tutorial));
   const autoSolveLocked = autoSolveTimer !== null;
   const viewLocked = appView !== 'game';
-  controls.forEach(button => { button.disabled = tutorialLocked || autoSolveLocked || albumOpen || viewLocked; });
+  const modalLocked = Boolean(rewardAd?.isOpen);
+  const gameLocked = tutorialLocked || autoSolveLocked || albumOpen || viewLocked || modalLocked || Boolean(state?.won);
+  controls.forEach(button => { button.disabled = gameLocked; });
+  lightButton.textContent = state?.lightModeActive ? '已亮燈' : state?.fullVisionMode ? '已全亮' : '亮燈';
+  lightButton.disabled = !state || Boolean(state.level.isTutorial || state.lightModeActive || state.fullVisionMode) || gameLocked;
+  lightButton.setAttribute('aria-label', lightButton.disabled
+    ? '迷宮已亮燈或目前無法使用亮燈'
+    : '開啟 NNE 廣告並點亮迷宮');
+  cheatButton.disabled = !state || tutorialLocked || albumOpen || viewLocked || modalLocked || Boolean(state?.won);
 }
 
 function updateStartAlbumProgress() {
@@ -42,6 +52,7 @@ function updateStartAlbumProgress() {
 }
 
 function showStartScreen() {
+  rewardAd?.cancel();
   if (startScreenExitTimer !== null) clearTimeout(startScreenExitTimer);
   startScreenExitTimer = null;
   appView = 'start';
@@ -101,9 +112,28 @@ function stopAutoSolve() {
   if (autoSolveTimer !== null) clearInterval(autoSolveTimer);
   autoSolveTimer = null;
   cheatButton.classList.remove('running');
-  cheatButton.setAttribute('aria-label', '重置並自動執行本關解答');
+  cheatButton.setAttribute('aria-label', '觀看本關解答（需先觀看 COO 廣告）');
   syncMovementControls();
 }
+
+rewardAd = createRewardAdModal({
+  root: document.getElementById('reward-ad-overlay'),
+  dialog: document.getElementById('reward-ad-dialog'),
+  brand: document.getElementById('reward-ad-brand'),
+  headline: document.getElementById('reward-ad-headline'),
+  body: document.getElementById('reward-ad-body'),
+  countdown: document.getElementById('reward-ad-countdown'),
+  action: document.getElementById('reward-ad-action'),
+  onOpen() {
+    cancelClickMove();
+    appRoot.inert = true;
+    syncMovementControls();
+  },
+  onClose() {
+    appRoot.inert = appView !== 'game';
+    syncMovementControls();
+  },
+});
 
 const album = createAlbum({
   stages: STAGES,
@@ -137,6 +167,7 @@ const album = createAlbum({
 });
 
 function start(index = stageIndex) {
+  rewardAd.cancel();
   clearAlbumCollectAnimation();
   cancelClickMove(true);
   stopAutoSolve();
@@ -151,6 +182,7 @@ function start(index = stageIndex) {
   state = createRunState(level, maze, DEBUG);
   if (level.isTutorial) state.tutorial = createTutorialState();
   cheatButton.hidden = Boolean(level.isTutorial);
+  lightButton.hidden = Boolean(level.isTutorial);
   const initialVision = getVisionCells(maze, state.player, state.visionRange).visibleCells;
   updateColorMemory(state, initialVision);
   select.value = String(index); hideWin(); buildBoard(state); render(state);
@@ -218,7 +250,7 @@ function executeMove(direction, clickPerformance = null, { source = 'player' } =
 }
 
 function move(direction) {
-  if (appView !== 'game' || albumOpen || autoSolveTimer !== null) return;
+  if (appView !== 'game' || albumOpen || rewardAd.isOpen || autoSolveTimer !== null || state?.won) return;
   cancelClickMove();
   if (state?.tutorial?.active) {
     if (!canMoveDuringTutorial(state.tutorial)) return;
@@ -229,7 +261,7 @@ function move(direction) {
 }
 
 function requestClickMove(target, inputTiming = null) {
-  if (appView !== 'game' || !state || albumOpen || autoSolveTimer !== null || state.won) return;
+  if (appView !== 'game' || !state || albumOpen || rewardAd.isOpen || autoSolveTimer !== null || state.won) return;
   if (state.tutorial?.active && !canMoveDuringTutorial(state.tutorial)) return;
   cancelClickMove();
   const clickReceivedAt = inputTiming?.clickReceivedAt ?? now();
@@ -256,6 +288,7 @@ function requestClickMove(target, inputTiming = null) {
   if (DEBUG_INPUT_PERFORMANCE) console.info(`[Click Perf] target feedback ${(now() - feedbackStartedAt).toFixed(2)}ms`);
   clickMoveController.start(path, target, {
     canStep: direction => {
+      if (rewardAd.isOpen || autoSolveTimer !== null || appView !== 'game') return false;
       if (state.tutorial?.active && (!canMoveDuringTutorial(state.tutorial)
         || !isTutorialMoveAllowed(state.tutorial, state.maze, state.player, direction))) return false;
       return canMovePlayerInDirection(state, direction).allowed;
@@ -289,9 +322,8 @@ function skipTutorial() {
 }
 
 function runAutoSolve() {
-  if (appView !== 'game' || !state) return;
+  if (appView !== 'game' || !state || state.won || state.level.isTutorial || rewardAd.isOpen) return;
   cancelClickMove();
-  if (state?.level.isTutorial) return;
   if (autoSolveTimer !== null) {
     stopAutoSolve();
     showToast('自動解答已停止');
@@ -327,7 +359,31 @@ function runAutoSolve() {
   syncMovementControls();
 }
 
-bindInput(move, () => { if (appView === 'game' && state) { state.debug = !state.debug; render(state); } }, () => appView !== 'game');
+function requestAutoSolve() {
+  if (autoSolveTimer !== null) {
+    runAutoSolve();
+    return;
+  }
+  if (appView !== 'game' || !state || state.won || state.level.isTutorial || rewardAd.isOpen) return;
+  rewardAd.showRewardAdModal({ type: 'solution', onComplete: runAutoSolve });
+}
+
+function requestLightMode() {
+  if (appView !== 'game' || !state || state.won || state.level.isTutorial
+    || state.lightModeActive || state.fullVisionMode || autoSolveTimer !== null || rewardAd.isOpen) return;
+  rewardAd.showRewardAdModal({
+    type: 'light',
+    onComplete() {
+      if (appView !== 'game' || !state || state.won) return;
+      state.lightModeActive = true;
+      render(state);
+      syncMovementControls();
+      showToast('迷宮已亮燈');
+    },
+  });
+}
+
+bindInput(move, () => appView !== 'game' || albumOpen || rewardAd.isOpen || Boolean(state?.won));
 bindBoardInput(document.getElementById('board'), () => ({
   width: state.maze.width,
   height: state.maze.height,
@@ -346,8 +402,8 @@ document.getElementById('next-level').addEventListener('click', () => {
     start(nextIndex);
   }
 });
-document.getElementById('debug').addEventListener('click', () => { state.debug = !state.debug; render(state); });
-cheatButton.addEventListener('click', runAutoSolve);
+lightButton.addEventListener('click', requestLightMode);
+cheatButton.addEventListener('click', requestAutoSolve);
 document.getElementById('tutorial-next').addEventListener('click', nextTutorialStep);
 document.getElementById('tutorial-skip').addEventListener('click', skipTutorial);
 select.addEventListener('change', () => {

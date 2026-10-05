@@ -1,6 +1,6 @@
-import { ALLOW_MEMORY_CLICK_MOVE, COLOR_LIBRARY, DEBUG_INPUT_PERFORMANCE, PLAYER_MOVE_TRANSITION_MS } from './config.js';
-import { createClickNavigationSnapshot, getClickMoveReachableCells } from './click-navigation.js';
-import { cellVisibility, getEffectiveMemorySteps, isFeatureVisible, positionKey, recentHistory } from './memory.js';
+import { ALLOW_MEMORY_CLICK_MOVE, COLOR_LIBRARY, DEBUG_INPUT_PERFORMANCE, PLAYER_MOVE_TRANSITION_MS } from './config.js?v=20261005-reward-ad-1';
+import { createClickNavigationSnapshot, getClickMoveReachableCells } from './click-navigation.js?v=20261005-reward-ad-1';
+import { cellVisibility, isFeatureVisible, positionKey } from './memory.js';
 import { currentRound, nextColor } from './objectives.js';
 import { STAGES, getColorConfig } from './levels.js';
 import { currentTutorialStep, TUTORIAL_STEPS } from './tutorial.js';
@@ -9,7 +9,7 @@ import { getBackgroundImageCandidates, preloadFirstAvailableImage } from './back
 
 const $ = id => document.getElementById(id);
 const refs = {
-  board: $('board'), host: $('board-host'), order: $('order'), toast: $('toast'), win: $('win'), debug: $('debug-panel'), notice: null, player: null,
+  board: $('board'), host: $('board-host'), order: $('order'), toast: $('toast'), win: $('win'), notice: null, player: null,
   tutorial: $('tutorial-overlay'), tutorialCard: $('tutorial-card'), tutorialSvg: $('tutorial-spotlight'), tutorialMask: $('tutorial-spotlight-mask'),
   tutorialMaskBase: $('tutorial-mask-base'), tutorialCutouts: $('tutorial-cutouts'), tutorialDim: $('tutorial-dim'), tutorialOutlines: $('tutorial-outlines'),
 };
@@ -224,6 +224,7 @@ function createBackgroundLayer(state, generation) {
 function renderBackground(state) {
   const layer = refs.board.querySelector('.board-background');
   refs.board.classList.toggle('full-vision-mode', Boolean(state.fullVisionMode));
+  refs.board.classList.toggle('light-mode', Boolean(state.lightModeActive));
   if (!layer) return;
 
   const config = state.level.background;
@@ -247,8 +248,7 @@ export function buildBoard(state) {
     cell.className = 'cell'; cell.setAttribute('role', 'gridcell'); cell.dataset.x = x; cell.dataset.y = y;
     const content = document.createElement('span'); content.className = 'cell-content';
     const memoryMarker = document.createElement('span'); memoryMarker.className = 'memory-marker'; memoryMarker.setAttribute('aria-hidden', 'true');
-    const debug = document.createElement('small'); debug.className = 'cell-debug'; debug.setAttribute('aria-hidden', 'true');
-    cell.append(content, memoryMarker, debug); refs.board.append(cell);
+    cell.append(content, memoryMarker); refs.board.append(cell);
   }
   const player = document.createElement('span');
   player.className = 'player-token';
@@ -269,69 +269,9 @@ export function buildBoard(state) {
   fitBoard(state);
 }
 
-function debugText(state, vision, memoryPathCells, memoryWallCells, effectiveMemorySteps) {
-  const locations = cells => [...cells].join('  ') || '（空）';
-  const recent = recentHistory(state.movementHistory, effectiveMemorySteps);
-  const unknownCells = new Set();
-  for (let y = 0; y < state.maze.height; y++) for (let x = 0; x < state.maze.width; x++) {
-    const key = `${x},${y}`;
-    if (!vision.visibleCells.has(key)) unknownCells.add(key);
-  }
-  const { colorSequence, colorRounds } = getColorConfig(state.level);
-  const targetColor = nextColor(state);
-  const list = items => items.length ? items.map((p, i) => `${i + 1}:(${p.x},${p.y})`).join('  ') : '（空）';
-  const itemLocations = kind => {
-    const items = state.level.items?.[kind] ?? state.maze.items.filter(item => item.kind === kind);
-    const remaining = new Set(state.maze.items.map(item => item.id));
-    return items.length ? items.map(item => `${item.id}:(${item.x},${item.y})${item.earlyResource ? ' [EARLY BRANCH]' : ''} [${remaining.has(item.id) ? 'AVAILABLE' : 'COLLECTED'}]`).join('  ') : '（空）';
-  };
-  const sameColorDistances = state.level.baseColorOrder.map(color => {
-    const copies = state.maze.colors.filter(target => target.color === color);
-    if (copies.length < 2) return null;
-    const distance = state.maze.quality?.colorPathDistances?.[`${copies[0].id} → ${copies[1].id}`];
-    return `${copies[0].id} ↔ ${copies[1].id}: ${distance ?? '?'}`;
-  }).filter(Boolean);
-  const purpleExitDistances = state.maze.quality?.purpleExitDistances ?? {};
-  const purpleExitSummary = Object.entries(purpleExitDistances).map(([id, distance]) => `${id}: ${distance}`).join(' · ') || '未知';
-  return [
-    `STAGE: ${state.level.stageId} / ${STAGES.length}`,
-    `SIZE TIER: ${state.level.sizeTier}`,
-    `MAZE SIZE: ${state.maze.width} × ${state.maze.height}`,
-    `SOLUTION LENGTH: ${state.maze.quality?.solutionLength ?? state.maze.solutionPath.length}`,
-    `FINAL PURPLE → EXIT DISTANCE: ${state.maze.quality?.finalPurpleToExitDistance ?? '未知'} (${purpleExitSummary})`,
-    `MIN REQUIRED DISTANCE: ${state.level.minFinalPurpleToExitPathDistance}`,
-    `SOLVER: ${state.level.solverResult?.status ?? 'VALID'}`,
-    `DEBUG 位置 (${state.player.x},${state.player.y})`,
-    `MEM LEVEL: ${state.memoryLevel}`,
-    `EFFECTIVE MEMORY: ${effectiveMemorySteps} STEPS`,
-    `FULL VISION MODE: ${state.fullVisionMode ? 'ON' : 'OFF'} · 背景 ${state.revealedBackgroundParts ?? 0} / ${state.level.background.revealOrder.length}`,
-    ...(state.backgroundLoadError ? [`BACKGROUND WARNING: ${state.backgroundLoadError}`] : []),
-    `VISION RANGE: ${state.visionRange}`,
-    `MAIN VISION (${vision.mainVisionCells.size} 格)\n${locations(vision.mainVisionCells)}`,
-    `SIDE VISION (${vision.sideVisionCells.size} 格)\n${locations(vision.sideVisionCells)}`,
-    `目前可見格 (${vision.visibleCells.size} 格)\n${locations(vision.visibleCells)}`,
-    `NNE POSITION\n${itemLocations('nne')}`,
-    `COO POSITION\n${itemLocations('coo')}`,
-    `movementHistory 共 ${state.movementHistory.length} 筆\n${list(state.movementHistory)}`,
-    `顯示中的最近 ${effectiveMemorySteps} 筆（${recent.length}）\n${list(recent)}`,
-    `memoryPathCells 白點 (${memoryPathCells.size} 格)\n${locations(memoryPathCells)}`,
-    `memoryWallCells 紅叉 (${memoryWallCells.size} 格)\n${locations(memoryWallCells)}`,
-    `colorMemory${state.fullVisionMode ? '（Full Vision 停用）' : '（id:剩餘成功移動）'}\n${state.fullVisionMode ? '（已停止）' : state.colorMemory?.size ? [...state.colorMemory].map(([id, remaining]) => `${id}:${remaining}`).join('  ') : '（空）'}`,
-    `未知地形（視野外；Debug 地圖仍會揭露）(${unknownCells.size} 格)\n${locations(unknownCells)}`,
-    `sequenceProgress: ${state.sequenceProgress} / ${colorSequence.length}\ncurrentTarget: ${targetColor ?? 'none'}\ncurrentRound: ${currentRound(state)} / ${colorRounds}`,
-    `彩色目標\n${state.maze.colors.map(target => `${target.id} [${target.color}] [${target.completed ? 'CONSUMED' : target.color === targetColor ? 'ACTIVE' : 'LOCKED'}]`).join('\n')}`,
-    `物件 sector\n${Object.entries(state.maze.quality?.sectorById ?? {}).map(([id, sector]) => `${id}: ${sector}`).join('  ')}`,
-    `同色目標實際路徑距離\n${sameColorDistances.join('  ') || '（無重複顏色）'}`,
-    `相鄰彩序目標實際路徑距離 / 中間路口\n${(state.maze.quality?.sequencePathDistances ?? []).map(item => `${item.from} → ${item.to}: ${item.distance} 步 / ${item.junctions} 路口`).join('  ')}`,
-    `路口 ${state.maze.quality?.junctionCount ?? '?'} · 死路端點 ${state.maze.quality?.deadEndCount ?? '?'} · 解答 ${state.maze.quality?.solutionLength ?? state.maze.solutionPath.length} 步`,
-  ].join('\n\n');
-}
-
 export function render(state) {
-  const effectiveMemorySteps = getEffectiveMemorySteps(state.memoryLevel);
   $('steps').textContent = state.steps; $('vision').textContent = state.visionRange; $('memory').textContent = state.memoryLevel;
   $('level-name').textContent = state.level.isTutorial ? '0 · 教學' : `${state.level.stageId} / ${STAGES.length}`;
-  $('debug').textContent = state.debug ? 'DEBUG ON' : 'DEBUG OFF'; $('debug').setAttribute('aria-pressed', String(state.debug));
   const { baseColorOrder, colorRounds, colorSequence } = getColorConfig(state.level);
   const targetColor = nextColor(state);
   refs.order.replaceChildren();
@@ -375,7 +315,7 @@ export function render(state) {
     const tutorialColorVisible = state.level.isTutorial && live?.kind === 'color' && !live.completed;
     const feature = tutorialColorVisible || isFeatureVisible(live, visible, colorRemembered, state.debug) ? live : null;
     const terrain = reveal ? state.maze.tiles[y][x] : null;
-    const content = cell.children[0], memoryMarker = cell.children[1], debugTag = cell.children[2];
+    const content = cell.children[0], memoryMarker = cell.children[1];
     const showMemoryPath = !visible && memoryPathCells.has(key);
     const showMemoryWall = !visible && memoryWallCells.has(key);
     cell.className = `cell ${terrain ? `revealed ${terrain}` : 'unknown'}`;
@@ -406,13 +346,10 @@ export function render(state) {
     }
     const isPlayer = x === state.player.x && y === state.player.y;
     if (isPlayer) { cell.classList.add('player'); content.textContent = ''; }
-    debugTag.textContent = state.debug ? key : '';
     const markerLabel = showMemoryPath && showMemoryWall ? '記憶位置 記憶牆' : showMemoryPath ? '記憶位置' : showMemoryWall ? '記憶牆' : '';
     cell.setAttribute('aria-label', `${key} ${terrain ?? '未知地形'} ${feature?.kind ?? ''} ${isPlayer ? '玩家' : ''} ${markerLabel}`.trim());
   }
   updatePlayerMarkerPosition(state);
-  refs.debug.hidden = !state.debug;
-  if (state.debug) refs.debug.textContent = debugText(state, vision, memoryPathCells, memoryWallCells, effectiveMemorySteps);
 }
 
 export function showToast(message, kind = '') {

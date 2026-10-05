@@ -55,14 +55,13 @@ export function bindBoardInput(board, getBoardState, onTarget) {
   });
 }
 
-export function bindInput(onMove, onDebug, isGameplayBlocked = () => false) {
+export function bindInput(onMove, isGameplayBlocked = () => false) {
   window.addEventListener('keydown', event => {
     if (event.target instanceof HTMLElement && event.target.matches('select, input, textarea')) return;
     if (isGameplayBlocked()) {
       if (directionForKey(event.key)) event.preventDefault();
       return;
     }
-    if (event.key === '?' || event.key === '`') { onDebug(); return; }
     const direction = directionForKey(event.key);
     if (!direction) return;
     event.preventDefault();

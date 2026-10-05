@@ -73,7 +73,6 @@ button:focus-visible, select:focus-visible { outline: 2px solid #89c6ff; outline
 .memory-marker { position: absolute; z-index: 1; inset: 0; pointer-events: none; }
 .memory-marker.memory-path::before { content: ''; position: absolute; width: 14%; aspect-ratio: 1; left: 50%; top: 50%; transform: translate(-50%, -50%); border-radius: 50%; background: #dbe2ecb8; box-shadow: 0 0 2px #ffffff42; }
 .memory-marker.memory-wall::after { content: '×'; position: absolute; inset: 0; display: grid; place-items: center; color: #f06a78; font: 700 calc(var(--cell) * .34)/1 system-ui, sans-serif; text-shadow: 0 0 2px #f06a7855; }
-.cell-debug { position: absolute; z-index: 4; right: 0; bottom: 0; padding: 0 1px; color: #fff; font: 7px monospace; background: #0009; }
 .cell.vision-current::after { content: ''; position: absolute; inset: 0; z-index: 3; pointer-events: none; outline: 1px solid #80e5ff6e; outline-offset: -1px; }
 .cell.debug-map { outline: 1px solid #91b4e844; outline-offset: -1px; }
 .cell.debug-map.main-visible::after { outline-color: #67dcff; outline-style: solid; }
@@ -115,14 +114,13 @@ button:focus-visible, select:focus-visible { outline: 2px solid #89c6ff; outline
   100% { opacity: 0; transform: translate(-50%, -50%) scale(.98); }
 }
 
-.cheat-button { align-self: center; padding: 5px 8px; border-color: #566987; background: #101a2bbd; color: #bac8dd; font: 700 9px/1 ui-monospace, monospace; letter-spacing: .07em; opacity: .8; white-space: nowrap; }
+.cheat-button { align-self: center; min-height: 32px; padding: 5px 8px; border-color: #566987; background: #101a2bbd; color: #bac8dd; font: 700 11px/1 ui-monospace, monospace; letter-spacing: .07em; opacity: .8; white-space: nowrap; }
 .cheat-button:hover { opacity: 1; color: white; }
 .cheat-running { display: none; }
 .cheat-button.running .cheat-idle { display: none; }
 .cheat-button.running .cheat-running { display: inline; color: #ffd19b; }
 .cheat-button.running { border-color: #bd8c58; }
 .cheat-button:disabled { cursor: wait; }
-.debug-panel { position: absolute; z-index: 6; inset: 5px auto auto 5px; width: min(48vw, 410px); max-height: 52%; overflow: auto; margin: 0; padding: 8px; border: 1px solid #7190b5; border-radius: 8px; background: #07101bea; color: #d7e8ff; font: 10px/1.4 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; pointer-events: auto; }
 .toast { position: absolute; top: 38px; left: 50%; transform: translateX(-50%) translateY(-6px); padding: 7px 12px; border: 1px solid #6681a7; background: #112440f0; border-radius: 8px; box-shadow: 0 6px 20px #0008; opacity: 0; pointer-events: none; transition: opacity .16s, transform .16s; text-align: center; white-space: nowrap; font-size: 12px; font-weight: 700; z-index: 8; }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 .toast.mistake { border-color: #ff6c78; color: #ffd3d7; background: #4b1d2aef; }
@@ -134,7 +132,9 @@ button:focus-visible, select:focus-visible { outline: 2px solid #89c6ff; outline
 .controls { display: none; }
 .controls button:disabled { opacity: .38; cursor: wait; }
 .help { display: flex; align-items: center; gap: 8px; color: #8294b4; font-size: 10px; white-space: nowrap; }
-.help button { font: 9px monospace; padding: 4px 6px; }
+.help button { font: 700 12px/1 ui-sans-serif, system-ui, sans-serif; padding: 4px 6px; }
+#light-mode { min-width: 56px; min-height: 32px; }
+#light-mode:disabled { opacity: .55; cursor: not-allowed; }
 .modal[hidden] { display: none; }
 .modal { position: fixed; inset: 0; z-index: 10; background: #030712cc; display: flex; align-items: center; justify-content: center; padding: 15px; }
 .modal-card { width: min(100%, 410px); padding: 24px; text-align: center; background: linear-gradient(145deg, #263451, #11192c); border: 1px solid #7890b5; border-radius: 18px; box-shadow: 0 24px 70px #000a; }
@@ -147,6 +147,38 @@ button:focus-visible, select:focus-visible { outline: 2px solid #89c6ff; outline
 .modal-actions { display: flex; gap: 9px; margin-top: 20px; }
 .modal-actions button { flex: 1; padding: 10px; }
 .modal-actions button:disabled { opacity: .4; cursor: not-allowed; }
+
+.reward-ad-overlay[hidden] { display: none; }
+.reward-ad-overlay {
+  position: fixed; z-index: 80; inset: 0; display: grid; place-items: center;
+  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  background: #030712ed; overscroll-behavior: contain;
+}
+.reward-ad-card {
+  width: min(100%, 460px); max-height: calc(100dvh - 24px); overflow: auto;
+  padding: clamp(20px, 5vw, 34px); border: 1px solid #577899; border-radius: 18px;
+  background: radial-gradient(ellipse at 50% 0, #213957, #101a2b 68%); color: #eaf3ff;
+  text-align: center; box-shadow: 0 24px 80px #000c, 0 0 32px #6bcfff18;
+}
+.reward-ad-card:focus { outline: none; }
+.reward-ad-visual {
+  position: relative; min-height: 120px; margin-bottom: 22px; display: grid; place-items: center; overflow: hidden;
+  border: 1px solid #7b9cbd55; border-radius: 12px;
+  background: radial-gradient(ellipse at center, #81d7f128, #111d2e 70%);
+  color: #c8f2ff; font: 900 clamp(28px, 8vw, 40px)/1 ui-monospace, monospace; letter-spacing: .18em;
+  text-shadow: 0 0 14px #7de1ff88;
+}
+.reward-ad-visual i { position: absolute; width: 7px; height: 7px; border-radius: 2px; transform: rotate(45deg); background: #8be5fa; box-shadow: 0 0 12px #8be5fa; }
+.reward-ad-visual i:nth-of-type(1) { left: 20%; top: 24%; }
+.reward-ad-visual i:nth-of-type(2) { right: 20%; top: 28%; background: #c5a4ff; box-shadow: 0 0 12px #c5a4ff; }
+.reward-ad-visual i:nth-of-type(3) { left: 50%; bottom: 18%; background: #ffd784; box-shadow: 0 0 12px #ffd784; }
+.reward-ad-card h2 { margin: 0 0 10px; color: #e2f5ff; font-size: clamp(19px, 4vw, 24px); line-height: 1.35; }
+.reward-ad-card p { margin: 0; color: #c3d1e5; font-size: 15px; line-height: 1.6; }
+.reward-ad-countdown { min-height: 26px; margin-top: 18px !important; color: #f3d88a !important; font-size: 16px !important; font-weight: 800; }
+.reward-ad-action { width: 100%; min-height: 50px; margin-top: 8px; border-color: #73bedb; background: linear-gradient(135deg, #28506b, #1b3855); color: #effbff; font-size: 16px; font-weight: 800; }
+.reward-ad-action:disabled { border-color: #455773; background: #182338; color: #93a1b6; cursor: wait; }
+.reward-ad-action:not(:disabled):hover { border-color: #b3efff; background: linear-gradient(135deg, #326484, #204564); }
+.reward-ad-action:focus-visible { outline: 2px solid #a8e8ff; outline-offset: 3px; }
 
 .tutorial-layer { position: fixed; inset: 0; z-index: 20; pointer-events: none; }
 .tutorial-layer[data-input-mode="locked"] { pointer-events: auto; }
@@ -195,9 +227,9 @@ button:focus-visible, select:focus-visible { outline: 2px solid #89c6ff; outline
   .sequence-arrow { font-size: 8px; }
   .order-chip { flex-basis: 10px; width: 10px; height: 10px; }
   .order-chip.done::after { font-size: 9px; }
-  .cheat-button { grid-column: 3; grid-row: 1 / 3; align-self: end; padding: 5px 6px; font-size: 8px; }
+  .cheat-button { grid-column: 3; grid-row: 1 / 3; align-self: end; padding: 5px 6px; font-size: 12px; }
   .cheat-idle { font-size: 0; }
-  .cheat-idle::after { content: '解答'; font-size: 8px; }
+  .cheat-idle::after { content: '解答'; font-size: 12px; }
   .bottom { min-height: 55px; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; grid-template-rows: auto auto; gap: 1px 5px; }
   .legend { grid-column: 1; grid-row: 1; font-size: 8px; }
   .controls { grid-column: 2; grid-row: 1 / 3; display: grid; grid-template-columns: repeat(3, 38px); grid-template-rows: repeat(2, 25px); gap: 2px; }
@@ -207,8 +239,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid #89c6ff; outline
   .controls [data-dir=down] { grid-column: 2; grid-row: 2; }
   .controls [data-dir=right] { grid-column: 3; grid-row: 2; }
   .help { grid-column: 1; grid-row: 2; flex-wrap: wrap; gap: 3px; font-size: 8px; }
-  .help button { padding: 3px 5px; font-size: 8px; }
-  .debug-panel { width: min(76vw, 410px); max-height: 62%; font-size: 9px; }
+  .help button { padding: 3px 5px; font-size: 12px; }
 }
 
 @media (max-width: 700px) {
@@ -268,7 +299,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid #89c6ff; outline
   .order-chip { flex-basis: 12px; width: 12px; height: 12px; }
   .order-chip.done::after { font-size: 9px; }
   .cheat-idle { font-size: 0; }
-  .cheat-idle::after { content: '解答'; font-size: 10px; }
+  .cheat-idle::after { content: '解答'; font-size: 12px; }
   .bottom { position: relative; min-height: 120px; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; justify-items: center; align-items: center; gap: 4px; }
   .legend { grid-column: 1 / -1; grid-row: 1; display: flex; justify-content: center; flex-wrap: wrap; column-gap: 8px; row-gap: 3px; font-size: 9px; text-align: center; }
   .legend-items { white-space: nowrap; }
@@ -283,8 +314,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid #89c6ff; outline
   .help { position: absolute; left: 0; bottom: 4px; z-index: 2; justify-content: center; gap: 0; font-size: 10px; }
   .help span { display: none; }
   .help button { min-width: 54px; min-height: 48px; padding: 5px 7px; font-size: 10px; }
-  .cheat-button { position: absolute; right: 0; bottom: 4px; z-index: 2; min-width: 58px; min-height: 48px; padding: 5px 7px; font-size: 10px; }
-  .debug-panel { width: min(76vw, 410px); max-height: 62%; font-size: 9px; }
+  .cheat-button { position: absolute; right: 0; bottom: 4px; z-index: 2; min-width: 58px; min-height: 48px; padding: 5px 7px; font-size: 12px; }
 }
 
 @media (max-width: 360px) {
@@ -320,9 +350,16 @@ button:focus-visible, select:focus-visible { outline: 2px solid #89c6ff; outline
   .controls { display: grid; grid-template-columns: repeat(3, 48px); grid-template-rows: repeat(2, 48px); gap: 4px; }
   .controls button { min-width: 48px; min-height: 48px; font-size: 20px; }
   .help { position: absolute; left: 0; bottom: 4px; gap: 0; }
-  .help button, .cheat-button { min-height: 48px; padding: 4px 6px; font-size: 9px; }
+  .help button, .cheat-button { min-height: 48px; padding: 4px 6px; font-size: 11px; }
   .cheat-button { position: absolute; right: 0; bottom: 4px; }
-  .cheat-idle::after { font-size: 9px; }
+  .cheat-idle::after { font-size: 11px; }
+}
+
+@media (max-height: 520px) {
+  .reward-ad-card { max-height: calc(100dvh - 16px); padding: 16px; }
+  .reward-ad-visual { min-height: 82px; margin-bottom: 12px; }
+  .reward-ad-countdown { margin-top: 10px !important; }
+  .reward-ad-action { min-height: 46px; margin-top: 4px; }
 }
 
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
