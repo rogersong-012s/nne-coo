@@ -63,7 +63,7 @@ export const TUTORIAL_STAGE = {
   minTargetPathDistance: 1, minSameColorPathDistance: 1, minFinalPurpleToExitPathDistance: 1, maxFinalPurpleToExitPathDistance: 1,
   mazeComplexity: 0, branchDensity: 0, minimumJunctions: 0,
   maxVisionRange: 3, maxMemoryLevel: 5,
-  background: { image: 'assets/background/level_x.png', opacity: 0.4, completedOpacity: 0.6, revealRows: 1, revealColumns: 3, revealOrder: [0, 1, 2] },
+  background: { image: '', opacity: 0.4, completedOpacity: 0.6, revealRows: 1, revealColumns: 3, revealOrder: [0, 1, 2] },
   isTutorial: true, generatedMaze: false, solverResult: { status: 'SCRIPTED', solutionLength: solutionPath.length },
   solutionPath: [...solutionPath], mazeTemplate,
 };

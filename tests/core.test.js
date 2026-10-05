@@ -13,6 +13,7 @@ import { bindBoardInput, bindInput, cellFromBoardPoint, directionForKey } from '
 import { createRunState } from '../js/run-state.js';
 import { advanceTutorial, canMoveDuringTutorial, createTutorialState, currentTutorialStep, isTutorialMoveAllowed, TUTORIAL_STEPS, tutorialActionCompleted } from '../js/tutorial.js';
 import { chooseTutorialDialogPosition } from '../js/tutorial-layout.js';
+import { getBackgroundImageCandidates } from '../js/background-assets.js';
 
 function makeObjectiveState({ colors = ['red', 'orange', 'yellow'], rounds = 2 } = {}) {
   const baseColorOrder = [...colors];
@@ -295,7 +296,10 @@ test('each Stage owns an independent 12-part background config and a scattered r
   assert.equal(new Set(LEVELS.map(level => JSON.stringify(level.background.revealOrder))).size, 100);
   for (const level of LEVELS) {
     const config = level.background;
-    assert.equal(config.image, 'assets/background/level_x.png');
+    assert.equal(config.image, '');
+    assert.deepEqual(getBackgroundImageCandidates(level.stageId, config.image), [
+      `assets/background/level_${level.stageId}.png`, 'assets/background/level_x.png',
+    ]);
     assert.equal(config.opacity, 0.4);
     assert.equal(config.completedOpacity, 0.6);
     assert.equal(config.revealRows, 3);

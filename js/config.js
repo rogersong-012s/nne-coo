@@ -1,5 +1,6 @@
 export const DEBUG = false;
 export const DEBUG_INPUT_PERFORMANCE = false;
+export const AUTO_SOLVE_COUNTS_AS_CLEAR = false;
 export const GAME_CONFIG = Object.freeze({ memoryStepMultiplier: 4 });
 export const ALLOW_MEMORY_CLICK_MOVE = false;
 export const CLICK_MOVE_STEP_INTERVAL = 200;

@@ -55,9 +55,13 @@ export function bindBoardInput(board, getBoardState, onTarget) {
   });
 }
 
-export function bindInput(onMove, onDebug) {
+export function bindInput(onMove, onDebug, isGameplayBlocked = () => false) {
   window.addEventListener('keydown', event => {
     if (event.target instanceof HTMLElement && event.target.matches('select, input, textarea')) return;
+    if (isGameplayBlocked()) {
+      if (directionForKey(event.key)) event.preventDefault();
+      return;
+    }
     if (event.key === '?' || event.key === '`') { onDebug(); return; }
     const direction = directionForKey(event.key);
     if (!direction) return;
@@ -70,6 +74,7 @@ export function bindInput(onMove, onDebug) {
   document.querySelectorAll('[data-dir]').forEach(button => {
     button.addEventListener('click', event => {
       event.preventDefault();
+      if (isGameplayBlocked()) return;
       onMove(button.dataset.dir);
     });
   });

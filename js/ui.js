@@ -5,6 +5,7 @@ import { currentRound, nextColor } from './objectives.js';
 import { STAGES, getColorConfig } from './levels.js';
 import { currentTutorialStep, TUTORIAL_STEPS } from './tutorial.js';
 import { chooseTutorialDialogPosition } from './tutorial-layout.js';
+import { getBackgroundImageCandidates, preloadFirstAvailableImage } from './background-assets.js';
 
 const $ = id => document.getElementById(id);
 const refs = {
@@ -13,12 +14,13 @@ const refs = {
   tutorialMaskBase: $('tutorial-mask-base'), tutorialCutouts: $('tutorial-cutouts'), tutorialDim: $('tutorial-dim'), tutorialOutlines: $('tutorial-outlines'),
 };
 let toastTimer, powerupNoticeTimer = null, powerupNoticeGeneration = 0;
-const reportedBackgroundFailures = new Set();
 let displayedTutorialStep = null;
 let fittedCellSize = 25;
+let albumCollectAnimation = null;
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const now = () => globalThis.performance?.now?.() ?? Date.now();
+let backgroundRequestGeneration = 0;
 
 function tutorialTargetElements(step) {
   const selectors = [step?.target, step?.fallback].flatMap(value => Array.isArray(value) ? value : [value]).filter(Boolean);
@@ -172,14 +174,15 @@ export function updateClickMoveMarker(target) {
     ?.classList.add('click-move-destination');
 }
 
-function createBackgroundLayer(state) {
+function createBackgroundLayer(state, generation) {
   const config = state.level.background;
   if (!config) return null;
   const layer = document.createElement('div');
   layer.className = 'board-background';
   layer.setAttribute('aria-hidden', 'true');
   layer.dataset.ready = 'false';
-  const { revealRows: rows, revealColumns: columns, image } = config;
+  const { revealRows: rows, revealColumns: columns } = config;
+  const candidates = getBackgroundImageCandidates(state.level.stageId, config.image);
   layer.style.setProperty('--background-columns', String(columns));
   layer.style.setProperty('--background-rows', String(rows));
 
@@ -194,32 +197,27 @@ function createBackgroundLayer(state) {
   }
   refs.board.append(layer);
 
-  const warn = reason => {
-    if (!layer.isConnected) return;
+  const isCurrent = () => generation === backgroundRequestGeneration
+    && layer.isConnected && refs.board.querySelector('.board-background') === layer;
+  const fail = failedImages => {
+    if (!isCurrent()) return;
     layer.remove();
-    state.backgroundLoadError = `${image}: ${reason}`;
-    if (!reportedBackgroundFailures.has(image)) {
-      console.warn(`Background image unavailable; continuing without it: ${state.backgroundLoadError}`);
-      reportedBackgroundFailures.add(image);
-    }
+    state.backgroundLoadError = `${failedImages.join(' → ')} (load failed)`;
     if (state.debug) render(state);
   };
-  if (!image.trim()) {
-    warn('empty image path');
-    return layer;
-  }
 
-  const loader = new Image();
-  loader.onload = () => {
-    if (!layer.isConnected) return;
-    const imageUrl = new URL(image, document.baseURI).href;
-    for (const part of layer.children) part.style.backgroundImage = `url("${imageUrl}")`;
+  preloadFirstAvailableImage(candidates).then(result => {
+    if (!isCurrent()) return;
+    if (!result) {
+      fail(candidates);
+      return;
+    }
+    for (const part of layer.children) part.style.backgroundImage = `url("${result.url}")`;
+    layer.dataset.source = result.path;
     layer.dataset.ready = 'true';
-    requestAnimationFrame(() => { if (layer.isConnected) render(state); });
-  };
-  loader.onerror = () => warn('load failed');
-  try { loader.src = new URL(image, document.baseURI).href; }
-  catch { warn('invalid image path'); }
+    state.backgroundLoadError = null;
+    requestAnimationFrame(() => { if (isCurrent()) render(state); });
+  });
   return layer;
 }
 
@@ -241,8 +239,9 @@ function renderBackground(state) {
 export function buildBoard(state) {
   clearPowerupNotice();
   refs.board.replaceChildren();
+  const backgroundGeneration = ++backgroundRequestGeneration;
   refs.board.style.gridTemplateColumns = `repeat(${state.maze.width}, var(--cell))`;
-  createBackgroundLayer(state);
+  createBackgroundLayer(state, backgroundGeneration);
   for (let y = 0; y < state.maze.height; y++) for (let x = 0; x < state.maze.width; x++) {
     const cell = document.createElement('div');
     cell.className = 'cell'; cell.setAttribute('role', 'gridcell'); cell.dataset.x = x; cell.dataset.y = y;
@@ -423,6 +422,106 @@ export function showToast(message, kind = '') {
   if (kind === 'vision') { refs.board.classList.remove('expand'); void refs.board.offsetWidth; refs.board.classList.add('expand'); }
 }
 
+export function clearAlbumCollectAnimation() {
+  const active = albumCollectAnimation;
+  if (!active) return;
+  albumCollectAnimation = null;
+  active.timers.forEach(timer => clearTimeout(timer));
+  active.animations.forEach(animation => {
+    animation.onfinish = null;
+    animation.cancel();
+  });
+  active.nodes.forEach(node => node.remove());
+  active.timers.clear();
+  active.animations.clear();
+  active.nodes.clear();
+}
+
+export function playAlbumCollectAnimation() {
+  clearAlbumCollectAnimation();
+  const boardRect = refs.board?.getBoundingClientRect();
+  const albumButton = $('album-open');
+  const targetRect = albumButton?.getBoundingClientRect();
+  if (!boardRect?.width || !boardRect.height || !targetRect?.width || !targetRect.height) return;
+
+  const run = { nodes: new Set(), animations: new Set(), timers: new Set() };
+  albumCollectAnimation = run;
+  const sourceX = boardRect.left + boardRect.width / 2;
+  const sourceY = boardRect.top + boardRect.height / 2;
+  const targetX = targetRect.left + targetRect.width / 2;
+  const targetY = targetRect.top + targetRect.height / 2;
+  const flight = document.createElement('div');
+  flight.className = 'album-unlock-flight';
+  flight.textContent = '✦';
+  flight.setAttribute('aria-hidden', 'true');
+  flight.style.left = `${sourceX - 19}px`;
+  flight.style.top = `${sourceY - 19}px`;
+  document.body.append(flight);
+  run.nodes.add(flight);
+
+  const schedule = (callback, duration) => {
+    const timer = setTimeout(() => {
+      run.timers.delete(timer);
+      if (albumCollectAnimation === run) callback();
+    }, duration);
+    run.timers.add(timer);
+  };
+  const animate = (element, keyframes, options, finish) => {
+    if (typeof element.animate !== 'function') {
+      schedule(finish, options.duration);
+      return;
+    }
+    const animation = element.animate(keyframes, options);
+    run.animations.add(animation);
+    animation.onfinish = () => {
+      run.animations.delete(animation);
+      if (albumCollectAnimation === run) finish();
+    };
+  };
+  const pulseAlbumButton = () => {
+    if (!albumButton.isConnected) return;
+    animate(albumButton, [
+      { transform: 'scale(1)', boxShadow: '0 0 0 0 #8edfff00' },
+      { transform: 'scale(1.1)', boxShadow: '0 0 0 5px #8edfff55, 0 0 22px #78d7ffbb' },
+      { transform: 'scale(1)', boxShadow: '0 0 0 0 #8edfff00' },
+    ], { duration: 220, easing: 'cubic-bezier(.2,.8,.25,1)' }, () => {});
+  };
+  const finishFlight = () => {
+    flight.remove();
+    run.nodes.delete(flight);
+    const impact = document.createElement('div');
+    impact.className = 'album-unlock-impact';
+    impact.setAttribute('aria-hidden', 'true');
+    impact.style.left = `${targetRect.left - 6}px`;
+    impact.style.top = `${targetRect.top - 6}px`;
+    impact.style.width = `${targetRect.width + 12}px`;
+    impact.style.height = `${targetRect.height + 12}px`;
+    document.body.append(impact);
+    run.nodes.add(impact);
+    animate(impact, [
+      { transform: 'scale(.55)', opacity: 0 },
+      { transform: 'scale(1.04)', opacity: .9, offset: .42 },
+      { transform: 'scale(1.32)', opacity: 0 },
+    ], { duration: 360, easing: 'ease-out' }, () => {
+      impact.remove();
+      run.nodes.delete(impact);
+    });
+    pulseAlbumButton();
+  };
+  const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  if (reduceMotion) {
+    finishFlight();
+    return;
+  }
+  animate(flight, [
+    { transform: 'translate3d(0,0,0) scale(.65)', opacity: 0 },
+    { transform: `translate3d(${(targetX - sourceX) * .2}px,${(targetY - sourceY) * .2 - 30}px,0) scale(1.1)`, opacity: 1, offset: .16 },
+    { transform: `translate3d(${targetX - sourceX}px,${targetY - sourceY}px,0) scale(.35)`, opacity: .95 },
+  ], { duration: 800, easing: 'cubic-bezier(.22,.72,.28,1)', fill: 'forwards' }, finishFlight);
+}
+
+window.addEventListener('pagehide', clearAlbumCollectAnimation);
+
 export function clearPowerupNotice() {
   if (powerupNoticeTimer !== null) clearTimeout(powerupNoticeTimer);
   powerupNoticeTimer = null;
@@ -460,7 +559,7 @@ export function showPowerupNotice(titleText, detailText, kind) {
 
 export function showWin(state, nextAvailable) {
   const result = $('results'); result.replaceChildren();
-  [['總步數', state.steps], ['NNE', state.nneCollected], ['COO', state.cooCollected], ['最終視野', state.visionRange], ['最終 MEM', state.memoryLevel]].forEach(([label, value]) => {
+  [['總步數', state.steps], ['NNE', state.nneCollected], ['COO', state.cooCollected], ['最終視野', state.visionRange], ['最終記憶', state.memoryLevel]].forEach(([label, value]) => {
     const el = document.createElement('div'); el.innerHTML = `<span>${label}</span><strong>${value}</strong>`; result.append(el);
   });
   if (state.level.isTutorial) {

@@ -1,20 +1,28 @@
-import { ALLOW_MEMORY_CLICK_MOVE, CLICK_MOVE_STEP_INTERVAL, DEBUG, DEBUG_INPUT_PERFORMANCE } from './config.js';
-import { GAME_STAGES, getColorConfig, prepareStage, validateLevel } from './levels.js';
+import { ALLOW_MEMORY_CLICK_MOVE, AUTO_SOLVE_COUNTS_AS_CLEAR, CLICK_MOVE_STEP_INTERVAL, DEBUG, DEBUG_INPUT_PERFORMANCE } from './config.js';
+import { GAME_STAGES, STAGES, getColorConfig, prepareStage, validateLevel } from './levels.js';
 import { cloneMaze, allReachable, solveMaze, validateSolutionPath } from './maze.js';
 import { ClickMoveController, createClickNavigationSnapshot, findClickMovePath } from './click-navigation.js';
 import { canMovePlayerInDirection } from './player.js';
 import { takeTurn } from './turn.js';
 import { getVisionCells, updateColorMemory } from './memory.js';
-import { buildBoard, clearPowerupNotice, fitBoard, hideTutorialOverlay, hideWin, playFullVisionTransition, render, renderTutorialOverlay, showPowerupNotice, showToast, showWin, updateClickMoveMarker } from './ui.js';
+import { buildBoard, clearAlbumCollectAnimation, clearPowerupNotice, fitBoard, hideTutorialOverlay, hideWin, playAlbumCollectAnimation, playFullVisionTransition, render, renderTutorialOverlay, showPowerupNotice, showToast, showWin, updateClickMoveMarker } from './ui.js?v=20261005-album-viewer-1';
 import { bindBoardInput, bindInput } from './input.js';
 import { createRunState } from './run-state.js';
 import { advanceTutorial, canMoveDuringTutorial, createTutorialState, currentTutorialStep, isTutorialMoveAllowed, tutorialActionCompleted } from './tutorial.js';
+import { createAlbum, getAlbumProgress } from './album.js?v=20261005-album-title-screen-1';
+import { addClearedStage, getInitialStageId, getPlayerState, setLastStage, setTutorialCompleted, shouldAddClearedStage } from './player-state.js?v=20261005-album-3';
 
-const INITIAL_STAGE_ID = 1; // Change to 0 later to start first-time players in the tutorial.
-let state, stageIndex = GAME_STAGES.findIndex(stage => stage.stageId === INITIAL_STAGE_ID), autoSolveTimer = null;
+const START_SCREEN_TRANSITION_MS = 200;
+let state, stageIndex = 0, autoSolveTimer = null, albumOpen = false;
+let appView = 'start', albumReturnContext = 'start', startScreenExitTimer = null;
 const clickMoveController = new ClickMoveController({ interval: CLICK_MOVE_STEP_INTERVAL });
 const select = document.getElementById('level-select');
 const cheatButton = document.getElementById('cheat');
+const appRoot = document.querySelector('.app');
+const startScreen = document.getElementById('start-screen');
+const startEnterButton = document.getElementById('start-enter');
+const startAlbumButton = document.getElementById('start-album');
+const startAlbumProgress = document.getElementById('start-album-progress');
 const controls = [...document.querySelectorAll('[data-dir]')];
 const now = () => globalThis.performance?.now?.() ?? Date.now();
 GAME_STAGES.forEach((stage, index) => {
@@ -24,7 +32,62 @@ GAME_STAGES.forEach((stage, index) => {
 function syncMovementControls() {
   const tutorialLocked = Boolean(state?.tutorial?.active && !canMoveDuringTutorial(state.tutorial));
   const autoSolveLocked = autoSolveTimer !== null;
-  controls.forEach(button => { button.disabled = tutorialLocked || autoSolveLocked; });
+  const viewLocked = appView !== 'game';
+  controls.forEach(button => { button.disabled = tutorialLocked || autoSolveLocked || albumOpen || viewLocked; });
+}
+
+function updateStartAlbumProgress() {
+  const progress = getAlbumProgress(getPlayerState().clearedStages);
+  startAlbumProgress.textContent = `${progress.count} / ${progress.total}`;
+}
+
+function showStartScreen() {
+  if (startScreenExitTimer !== null) clearTimeout(startScreenExitTimer);
+  startScreenExitTimer = null;
+  appView = 'start';
+  albumReturnContext = 'start';
+  cancelClickMove();
+  stopAutoSolve();
+  hideTutorialOverlay();
+  startScreen.hidden = false;
+  startScreen.inert = false;
+  startScreen.classList.remove('is-leaving');
+  appRoot.hidden = true;
+  appRoot.inert = true;
+  startEnterButton.disabled = false;
+  updateStartAlbumProgress();
+  syncMovementControls();
+  startEnterButton.focus({ preventScroll: true });
+}
+
+function hideStartScreen() {
+  appView = 'transition';
+  appRoot.hidden = false;
+  appRoot.inert = true;
+  startScreen.inert = true;
+  startScreen.classList.add('is-leaving');
+  startEnterButton.disabled = true;
+  startScreenExitTimer = window.setTimeout(() => {
+    startScreen.hidden = true;
+    startScreen.classList.remove('is-leaving');
+    appRoot.inert = false;
+    appView = 'game';
+    startScreenExitTimer = null;
+    startEnterButton.disabled = false;
+    syncMovementControls();
+    document.getElementById('board').focus({ preventScroll: true });
+  }, START_SCREEN_TRANSITION_MS);
+}
+
+function enterGame() {
+  if (appView !== 'start') return;
+  const startStageId = getInitialStageId(getPlayerState());
+  const savedIndex = GAME_STAGES.findIndex(stage => stage.stageId === startStageId);
+  const nextStageIndex = savedIndex >= 0 ? savedIndex : 0;
+  const nextStageId = GAME_STAGES[nextStageIndex].stageId;
+  if (nextStageId > 0) setLastStage(nextStageId);
+  hideStartScreen();
+  start(nextStageIndex);
 }
 
 function cancelClickMove(resetCadence = false) {
@@ -42,7 +105,39 @@ function stopAutoSolve() {
   syncMovementControls();
 }
 
+const album = createAlbum({
+  stages: STAGES,
+  onOpen() {
+    albumReturnContext = appView === 'start' ? 'start' : 'game';
+    appView = 'album';
+    albumOpen = true;
+    cancelClickMove();
+    stopAutoSolve();
+    appRoot.inert = true;
+    if (albumReturnContext === 'start') startScreen.inert = true;
+    syncMovementControls();
+  },
+  onClose() {
+    albumOpen = false;
+    appView = albumReturnContext;
+    if (albumReturnContext === 'start') {
+      appRoot.hidden = true;
+      appRoot.inert = true;
+      startScreen.hidden = false;
+      startScreen.inert = false;
+      startScreen.classList.remove('is-leaving');
+      updateStartAlbumProgress();
+    } else {
+      appRoot.hidden = false;
+      appRoot.inert = false;
+    }
+    syncMovementControls();
+    return albumReturnContext === 'start' ? startAlbumButton : null;
+  },
+});
+
 function start(index = stageIndex) {
+  clearAlbumCollectAnimation();
   cancelClickMove(true);
   stopAutoSolve();
   hideTutorialOverlay();
@@ -64,7 +159,7 @@ function start(index = stageIndex) {
   showToast(`${level.name} · 尋找紅色`);
 }
 
-function executeMove(direction, clickPerformance = null) {
+function executeMove(direction, clickPerformance = null, { source = 'player' } = {}) {
   const moveStartedAt = clickPerformance && !clickPerformance.firstMoveLogged ? now() : null;
   const wasFullVisionMode = state.fullVisionMode;
   const tutorialStep = currentTutorialStep(state.tutorial);
@@ -106,14 +201,24 @@ function executeMove(direction, clickPerformance = null) {
 
   if (state.won) {
     cancelClickMove();
+    if (shouldAddClearedStage(source, AUTO_SOLVE_COUNTS_AS_CLEAR)) {
+      const newlyUnlocked = state.level.stageId > 0
+        && !getPlayerState().clearedStages.includes(state.level.stageId);
+      addClearedStage(state.level.stageId);
+      if (newlyUnlocked) playAlbumCollectAnimation();
+    }
     stopAutoSolve();
+    if (state.level.isTutorial) {
+      setTutorialCompleted(true);
+      setLastStage(1);
+    }
     showWin(state, stageIndex < GAME_STAGES.length - 1);
   }
   return turn;
 }
 
 function move(direction) {
-  if (autoSolveTimer !== null) return;
+  if (appView !== 'game' || albumOpen || autoSolveTimer !== null) return;
   cancelClickMove();
   if (state?.tutorial?.active) {
     if (!canMoveDuringTutorial(state.tutorial)) return;
@@ -124,7 +229,7 @@ function move(direction) {
 }
 
 function requestClickMove(target, inputTiming = null) {
-  if (!state || autoSolveTimer !== null || state.won) return;
+  if (appView !== 'game' || !state || albumOpen || autoSolveTimer !== null || state.won) return;
   if (state.tutorial?.active && !canMoveDuringTutorial(state.tutorial)) return;
   cancelClickMove();
   const clickReceivedAt = inputTiming?.clickReceivedAt ?? now();
@@ -176,10 +281,15 @@ function nextTutorialStep() {
 
 function skipTutorial() {
   const stageOneIndex = GAME_STAGES.findIndex(stage => stage.stageId === 1);
-  if (stageOneIndex >= 0) start(stageOneIndex);
+  if (stageOneIndex >= 0) {
+    setTutorialCompleted(true);
+    setLastStage(1);
+    start(stageOneIndex);
+  }
 }
 
 function runAutoSolve() {
+  if (appView !== 'game' || !state) return;
   cancelClickMove();
   if (state?.level.isTutorial) return;
   if (autoSolveTimer !== null) {
@@ -201,7 +311,7 @@ function runAutoSolve() {
   syncMovementControls();
   let stepIndex = 0;
   autoSolveTimer = setInterval(() => {
-    const turn = executeMove(solution[stepIndex++]);
+    const turn = executeMove(solution[stepIndex++], null, { source: 'auto-solve' });
     if (!turn.moved) {
       stopAutoSolve();
       showToast('解答路徑中斷', 'mistake');
@@ -217,18 +327,34 @@ function runAutoSolve() {
   syncMovementControls();
 }
 
-bindInput(move, () => { state.debug = !state.debug; render(state); });
+bindInput(move, () => { if (appView === 'game' && state) { state.debug = !state.debug; render(state); } }, () => appView !== 'game');
 bindBoardInput(document.getElementById('board'), () => ({
   width: state.maze.width,
   height: state.maze.height,
 }), requestClickMove);
 document.getElementById('restart').addEventListener('click', () => start());
+startEnterButton.addEventListener('click', enterGame);
+startAlbumButton.addEventListener('click', () => {
+  if (appView === 'start') album.open();
+});
 document.getElementById('play-again').addEventListener('click', () => start());
-document.getElementById('next-level').addEventListener('click', () => { if (stageIndex < GAME_STAGES.length - 1) start(stageIndex + 1); });
+document.getElementById('next-level').addEventListener('click', () => {
+  if (stageIndex < GAME_STAGES.length - 1) {
+    const nextIndex = stageIndex + 1;
+    const nextStageId = GAME_STAGES[nextIndex].stageId;
+    if (nextStageId > 0) setLastStage(nextStageId);
+    start(nextIndex);
+  }
+});
 document.getElementById('debug').addEventListener('click', () => { state.debug = !state.debug; render(state); });
 cheatButton.addEventListener('click', runAutoSolve);
 document.getElementById('tutorial-next').addEventListener('click', nextTutorialStep);
 document.getElementById('tutorial-skip').addEventListener('click', skipTutorial);
-select.addEventListener('change', () => start(Number(select.value)));
+select.addEventListener('change', () => {
+  const nextIndex = Number(select.value);
+  const selectedStageId = GAME_STAGES[nextIndex]?.stageId;
+  if (selectedStageId > 0) setLastStage(selectedStageId);
+  start(nextIndex);
+});
 new ResizeObserver(() => { if (state) fitBoard(state); }).observe(document.getElementById('board-host'));
-start(stageIndex);
+showStartScreen();

@@ -64,7 +64,8 @@ function makeBackground(seed) {
     [revealOrder[index], revealOrder[swapIndex]] = [revealOrder[swapIndex], revealOrder[index]];
   }
   return {
-    image: 'assets/background/level_x.png', opacity: 0.4, completedOpacity: 0.6,
+    // Empty image means use this Stage's level_N image, then level_x fallback.
+    image: '', opacity: 0.4, completedOpacity: 0.6,
     revealRows: 3, revealColumns: 4, revealOrder,
   };
 }
