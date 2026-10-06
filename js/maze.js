@@ -565,10 +565,10 @@ function buildMission(level, tiles, floor, spawn, random, colorSequence, colorCo
   return { exit, colors, items, walk, sequenceTargets };
 }
 
-function generateMazeAttempt(level, attempt) {
+function generateMazeAttempt(level, attempt, seedIncrement) {
   const width = level.mazeWidth, height = level.mazeHeight;
   const { colorSequence, colorCopies } = getColorConfig(level);
-  const random = makeRandom(level.seed + attempt * 104729);
+  const random = makeRandom(level.seed + attempt * seedIncrement);
   const tiles = Array.from({ length: height }, () => Array(width).fill('wall'));
   const start = { ...level.start }, stack = [start];
   tiles[start.y][start.x] = 'floor';
@@ -595,7 +595,7 @@ function generateMazeAttempt(level, attempt) {
   if (reachable.size !== floor.length) throw new Error('迷宮道路不連通。');
   const targetCount = Object.values(colorCopies).reduce((sum, count) => sum + count, 0);
   if (floor.length < targetCount + level.nneCount + level.cooCount + 2) throw new Error('迷宮沒有足夠的可用道路格。');
-  const avoidMajorColorChokes = level.stageId >= 1 && level.stageId <= 20;
+  const avoidMajorColorChokes = level.avoidMajorColorChokes ?? (level.stageId >= 1 && level.stageId <= 20);
   const majorChokeKeys = avoidMajorColorChokes
     ? new Set(analyzeChokePoints({ tiles, width, height, spawn }).majorChokePoints.map(key))
     : new Set();
@@ -614,11 +614,13 @@ function generateMazeAttempt(level, attempt) {
   return maze;
 }
 
-export function generateMaze(level) {
+export function generateMaze(level, { maxAttempts = GENERATION_ATTEMPT_LIMIT, seedIncrement = 104729 } = {}) {
+  if (!Number.isInteger(maxAttempts) || maxAttempts < 1) throw new RangeError('maxAttempts must be a positive integer.');
+  if (!Number.isInteger(seedIncrement) || seedIncrement < 1) throw new RangeError('seedIncrement must be a positive integer.');
   let lastError;
-  for (let attempt = 0; attempt < GENERATION_ATTEMPT_LIMIT; attempt++) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
-      const maze = generateMazeAttempt(level, attempt);
+      const maze = generateMazeAttempt(level, attempt, seedIncrement);
       const colorConfig = getColorConfig(level);
       const shouldValidateChoiceSafety = level.choiceSafeValidation
         && colorConfig.colorRounds === 2
@@ -634,13 +636,13 @@ export function generateMaze(level) {
         }
       }
       maze.generationAttempt = attempt;
-      maze.generationSeed = level.seed + attempt * 104729;
+      maze.generationSeed = level.seed + attempt * seedIncrement;
       return maze;
     } catch (error) {
       lastError = error;
     }
   }
-  throw new Error(`無法產生符合關卡條件的迷宮（嘗試 ${GENERATION_ATTEMPT_LIMIT} 次）：${lastError?.message ?? '設定無效'}`);
+  throw new Error(`無法產生符合關卡條件的迷宮（嘗試 ${maxAttempts} 次）：${lastError?.message ?? '設定無效'}`);
 }
 
 export function cloneMaze(maze) {

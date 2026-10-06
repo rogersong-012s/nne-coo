@@ -6,6 +6,7 @@ import { STAGES, getColorConfig } from './levels.js';
 import { currentTutorialStep, TUTORIAL_STEPS } from './tutorial.js';
 import { chooseTutorialDialogPosition } from './tutorial-layout.js';
 import { getBackgroundImageCandidates, preloadFirstAvailableImage } from './background-assets.js';
+import { DAILY_UI_TEXT } from './daily-ui.js?v=20261006-daily-copy-1';
 
 const $ = id => document.getElementById(id);
 const refs = {
@@ -13,6 +14,9 @@ const refs = {
   tutorial: $('tutorial-overlay'), tutorialCard: $('tutorial-card'), tutorialSvg: $('tutorial-spotlight'), tutorialMask: $('tutorial-spotlight-mask'),
   tutorialMaskBase: $('tutorial-mask-base'), tutorialCutouts: $('tutorial-cutouts'), tutorialDim: $('tutorial-dim'), tutorialOutlines: $('tutorial-outlines'),
 };
+refs.board.addEventListener('animationend', event => {
+  if (event.animationName === 'shake') refs.board.classList.remove('shake');
+});
 let toastTimer, powerupNoticeTimer = null, powerupNoticeGeneration = 0;
 let displayedTutorialStep = null;
 let fittedCellSize = 25;
@@ -239,6 +243,7 @@ function renderBackground(state) {
 
 export function buildBoard(state) {
   clearPowerupNotice();
+  refs.board.classList.remove('shake');
   refs.board.replaceChildren();
   const backgroundGeneration = ++backgroundRequestGeneration;
   refs.board.style.gridTemplateColumns = `repeat(${state.maze.width}, var(--cell))`;
@@ -271,7 +276,14 @@ export function buildBoard(state) {
 
 export function render(state) {
   $('steps').textContent = state.steps; $('vision').textContent = state.visionRange; $('memory').textContent = state.memoryLevel;
-  $('level-name').textContent = state.level.isTutorial ? '0 · 教學' : `${state.level.stageId} / ${STAGES.length}`;
+  const levelKind = document.querySelector('.level-name > span');
+  if (state.level.isDaily) {
+    levelKind.textContent = 'DAILY';
+    $('level-name').textContent = state.level.dailyMetadata.dateKey.replaceAll('-', '/');
+  } else {
+    levelKind.textContent = 'STAGE';
+    $('level-name').textContent = state.level.isTutorial ? '0 · 教學' : `${state.level.stageId} / ${STAGES.length}`;
+  }
   const { baseColorOrder, colorRounds, colorSequence } = getColorConfig(state.level);
   const targetColor = nextColor(state);
   refs.order.replaceChildren();
@@ -499,7 +511,11 @@ export function showWin(state, nextAvailable) {
   [['總步數', state.steps], ['NNE', state.nneCollected], ['COO', state.cooCollected], ['最終視野', state.visionRange], ['最終記憶', state.memoryLevel]].forEach(([label, value]) => {
     const el = document.createElement('div'); el.innerHTML = `<span>${label}</span><strong>${value}</strong>`; result.append(el);
   });
-  if (state.level.isTutorial) {
+  if (state.level.isDaily) {
+    $('win-title').textContent = DAILY_UI_TEXT.clearTitle;
+    $('win-description').textContent = DAILY_UI_TEXT.clearDescription;
+    $('play-again').textContent = DAILY_UI_TEXT.replayButton;
+  } else if (state.level.isTutorial) {
     $('win-title').textContent = 'TUTORIAL COMPLETE';
     $('win-description').textContent = '你已完成 Stage 0 教學。準備好後，前往 Stage 1 開始正式關卡。';
     $('play-again').textContent = '重玩教學';
@@ -508,8 +524,9 @@ export function showWin(state, nextAvailable) {
     $('win-description').textContent = nextAvailable ? '成功走出彩序迷宮' : '你已完成全部 100 個 Stage。';
     $('play-again').textContent = '重新開始';
   }
-  $('next-level').disabled = !nextAvailable;
-  $('next-level').textContent = state.level.isTutorial ? '前往 Stage 1' : nextAvailable ? 'NEXT STAGE' : 'ALL STAGES CLEAR';
+  $('next-level').disabled = state.level.isDaily ? false : !nextAvailable;
+  $('next-level').textContent = state.level.isDaily ? '回首頁'
+    : state.level.isTutorial ? '前往 Stage 1' : nextAvailable ? 'NEXT STAGE' : 'ALL STAGES CLEAR';
   refs.win.hidden = false;
 }
 export function playFullVisionTransition() {

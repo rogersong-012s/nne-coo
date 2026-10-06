@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0b1020">
   <title>彩序迷宮 · NNECOO</title>
-  <link rel="stylesheet" href="css/style.css?v=20261005-reward-ad-1">
+  <link rel="stylesheet" href="css/style.css?v=20261006-daily-entry-cleanup-1">
 </head>
 <body>
   <section id="start-screen" class="start-screen" aria-labelledby="start-title">
@@ -18,10 +18,14 @@
         <button id="start-enter" class="start-button primary" type="button">
           <span>進入</span><span class="start-button-arrow" aria-hidden="true">→</span>
         </button>
+        <button id="start-daily" class="start-button secondary daily-start-button" type="button" aria-describedby="start-daily-status">
+          <span>每日一關</span><small id="start-daily-date">--/--</small>
+        </button>
         <button id="start-album" class="start-button secondary" type="button">
           <span>相簿</span><small id="start-album-progress">0 / 100</small>
         </button>
       </div>
+      <p id="start-daily-status" class="start-daily-status" role="status" aria-live="polite"></p>
       <p class="start-caption">FOLLOW THE COLORS · FIND YOUR WAY OUT</p>
     </div>
   </section>
@@ -32,8 +36,8 @@
         <div class="stat"><span>STEP</span><strong id="steps">0</strong></div>
         <div class="stat"><span>VIS</span><strong id="vision">2</strong></div>
         <div class="stat"><span>MEM</span><strong id="memory">3</strong></div>
-        <div class="stat level-name"><span>STAGE</span><strong id="level-name">載入中</strong></div>
-        <div class="menu"><select id="level-select" aria-label="選擇 Stage"></select><button id="album-open" class="album-open-button" type="button" aria-haspopup="dialog" aria-controls="album-overlay"><span aria-hidden="true">▣</span><span>相簿</span></button><button id="restart" type="button" title="重置目前 Stage">重置</button></div>
+        <div class="stat level-name"><span>STAGE</span><strong id="level-name">—</strong></div>
+        <div class="menu"><select id="level-select" class="level-select-control" aria-label="選擇 Stage"></select><div id="daily-level-control" class="level-select-control daily-level-control" role="note" hidden>今日 · <time id="daily-level-date"></time></div><button id="daily-home" class="game-home-button" type="button" hidden>回首頁</button><button id="album-open" class="album-open-button" type="button" aria-haspopup="dialog" aria-controls="album-overlay"><span aria-hidden="true">▣</span><span>相簿</span></button><button id="restart" type="button" title="重置目前關卡">重置</button></div>
       </section>
     </header>
     <section id="order-panel" class="order-panel" aria-label="彩色順序"><div class="order-label"><span>彩序</span><span id="order-hint">尋找紅色</span></div><div id="order" class="order"></div></section>
@@ -120,6 +124,6 @@
       <button id="reward-ad-action" class="reward-ad-action" type="button" disabled></button>
     </section>
   </div>
-  <script type="module" src="js/game.js?v=20261005-album-unlock-fix-1"></script>
+  <script type="module" src="js/game.js?v=20261006-daily-entry-cleanup-1"></script>
 </body>
 </html>
